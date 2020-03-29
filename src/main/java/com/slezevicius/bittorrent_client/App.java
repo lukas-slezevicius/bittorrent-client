@@ -3,10 +3,6 @@ package com.slezevicius.bittorrent_client;
 import java.io.IOException;
 import java.util.zip.DataFormatException;
 
-/**
- * Hello world!
- *
- */
 public class App 
 {
     public static void main( String[] args )
@@ -38,5 +34,6 @@ public class App
             return;
         }
         System.out.println(tor);
+        System.out.println(tor.getHexInfoHash());
     }
 }

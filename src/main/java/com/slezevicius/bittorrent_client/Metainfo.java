@@ -1,10 +1,14 @@
 package com.slezevicius.bittorrent_client;
 
 import java.io.File;
-import java.io.FileInputStream; import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.zip.DataFormatException;
 
 class Metainfo {
@@ -18,6 +22,7 @@ class Metainfo {
     private String comment;
     private String createdBy;
     private String encoding;
+    private byte[] infoHash;
 
     Metainfo(String filepath) throws DataFormatException, IOException {
         Bencoding b = new Bencoding(readFile(filepath));
@@ -33,9 +38,9 @@ class Metainfo {
     }
 
     private void updateFields(Object data) throws DataFormatException {
-        if (data instanceof HashMap) {
-            //The data hashmap is guaranteed to be of type signature <String, Object> by Bencoding
-            HashMap<String, Object> metaDict = (HashMap<String, Object>) data;
+        if (data instanceof LinkedHashMap) {
+            //The data linkedhashmap is guaranteed to be of type signature <String, Object> by Bencoding
+            LinkedHashMap<String, Object> metaDict = (LinkedHashMap<String, Object>) data;
             updateInfo(metaDict);
             updateAnnounce(metaDict);
             updateAnnounceList(metaDict);
@@ -48,11 +53,12 @@ class Metainfo {
         }
     }
 
-    private void updateInfo(HashMap<String, Object> metaDict) throws DataFormatException {
+    private void updateInfo(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "info";
         if (metaDict.containsKey(keyName)) {
             //The infoDict is guaranteed to be of type signature <String, Object> by Bencoding
-            HashMap<String, Object> infoDict = (HashMap<String, Object>) metaDict.get(keyName);
+            LinkedHashMap<String, Object> infoDict = (LinkedHashMap<String, Object>) metaDict.get(keyName);
+            updateInfoHash(infoDict);
             updatePieceLength(infoDict);
             updatePieces(infoDict);
             //Supports only single file mode
@@ -63,7 +69,24 @@ class Metainfo {
         }
     }
 
-    private void updatePieceLength(HashMap<String, Object> infoDict) throws DataFormatException {
+    private void updateInfoHash(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
+        ArrayList<Byte> ByteList = Bencoding.encode(infoDict);
+        Byte[] ByteArray = new Byte[ByteList.size()];
+        ByteArray = ByteList.toArray(ByteArray);
+        byte[] byteArray = new byte[ByteArray.length];
+        for (int i = 0; i < ByteArray.length; i++) {
+            byteArray[i] = ByteArray[i].byteValue();
+        }
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("SHA-1");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        infoHash = md.digest(byteArray);
+    }
+
+    private void updatePieceLength(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "piece length";
         if (infoDict.containsKey(keyName)) {
             if (infoDict.get(keyName) instanceof Long) {
@@ -76,7 +99,7 @@ class Metainfo {
         }
     }
 
-    private void updatePieces(HashMap<String, Object> infoDict) throws DataFormatException {
+    private void updatePieces(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "pieces";
         if (infoDict.containsKey(keyName)) {
             if (infoDict.get(keyName) instanceof byte[]) {
@@ -89,7 +112,7 @@ class Metainfo {
         }
     }
 
-    private void updateName(HashMap<String, Object> infoDict) throws DataFormatException {
+    private void updateName(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "name";
         if (infoDict.containsKey(keyName)) {
             if (infoDict.get(keyName) instanceof byte[]) {
@@ -102,7 +125,7 @@ class Metainfo {
         }
     }
 
-    private void updateLength(HashMap<String, Object> infoDict) throws DataFormatException {
+    private void updateLength(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "length";
         if (infoDict.containsKey(keyName)) {
             if (infoDict.get(keyName) instanceof Long) {
@@ -115,7 +138,7 @@ class Metainfo {
         }
     }
 
-    private void updateAnnounce(HashMap<String, Object> metaDict) throws DataFormatException {
+    private void updateAnnounce(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "announce";
         if (metaDict.containsKey(keyName)) {
             if (metaDict.get(keyName) instanceof byte[]) {
@@ -128,7 +151,7 @@ class Metainfo {
         }
     }
 
-    private void updateAnnounceList(HashMap<String, Object> metaDict) throws DataFormatException {
+    private void updateAnnounceList(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "announce-list";
         if (metaDict.containsKey(keyName)) {
             announceList = new ArrayList<ArrayList<String>>();
@@ -155,7 +178,7 @@ class Metainfo {
         }
     }
 
-    private void updateCreationDate(HashMap<String, Object> metaDict) throws DataFormatException {
+    private void updateCreationDate(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "creation date";
         if (metaDict.containsKey(keyName)) {
             if (metaDict.get(keyName) instanceof Long) {
@@ -166,7 +189,7 @@ class Metainfo {
         }
     }
 
-    private void updateComment(HashMap<String, Object> metaDict) throws DataFormatException {
+    private void updateComment(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "comment";
         if (metaDict.containsKey(keyName)) {
             if (metaDict.get(keyName) instanceof byte[]) {
@@ -177,7 +200,7 @@ class Metainfo {
         }
     }
 
-    private void updateCreatedBy(HashMap<String, Object> metaDict) throws DataFormatException {
+    private void updateCreatedBy(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "created by";
         if (metaDict.containsKey(keyName)) {
             if (metaDict.get(keyName) instanceof byte[]) {
@@ -188,7 +211,7 @@ class Metainfo {
         }
     }
 
-    private void updateEncoding(HashMap<String, Object> metaDict) throws DataFormatException {
+    private void updateEncoding(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "encoding";
         if (metaDict.containsKey(keyName)) {
             if (metaDict.get(keyName) instanceof byte[]) {
@@ -215,7 +238,7 @@ class Metainfo {
         return length;
     }
 
-    public String announce() {
+    public String getAnnounce() {
         return announce;
     }
 
@@ -237,6 +260,26 @@ class Metainfo {
 
     public String getEncoding() {
         return encoding;
+    }
+
+    private static final byte[] HEX_ARRAY = "0123456789ABCDEF".getBytes();
+
+    private static String bytesToHex(byte[] bytes) {
+        byte[] hexChars = new byte[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars, StandardCharsets.UTF_8);
+    }
+
+    public String getHexInfoHash() {
+        return Metainfo.bytesToHex(infoHash);
+    }
+
+    public byte[] getInfoHash() {
+        return infoHash;
     }
 
     @Override

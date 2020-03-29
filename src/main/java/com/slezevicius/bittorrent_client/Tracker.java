@@ -2,6 +2,7 @@ package com.slezevicius.bittorrent_client;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -11,8 +12,16 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 
 class Tracker {
+    private String announce;
+    private ArrayList<ArrayList<String>> announceList;
 
-    public static byte[] sendRequest(String url) {
+    Tracker(Metainfo metainfo) {
+        announce = metainfo.getAnnounce();
+        announceList = metainfo.getAnnounceList();
+        infoHash = metainfo.getInfoHash();
+    }
+
+    private static byte[] sendRequest(String url) {
         CloseableHttpClient httpclient = HttpClients.createDefault();
         HttpGet httpGet = new HttpGet(url);
         try {
