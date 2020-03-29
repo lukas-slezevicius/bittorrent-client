@@ -1,3 +1,5 @@
+package com.slezevicius.bittorrent_client;
+
 import java.util.HashMap;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -66,12 +68,5 @@ public class Bencoding {
         } else {
             return null;
         }
-    }
-
-    public static void main(String args[]) {
-        String input = "d2:abi12534e4:hahai-12e3:MYRli1ei2ed2:jji59eeee";
-        Bencoding b = new Bencoding(input);
-        Object out = b.decode();
-        System.out.println(out);
     }
 }
