@@ -1,6 +1,7 @@
 package com.slezevicius.bittorrent_client;
 
 import java.util.HashMap;
+import java.util.zip.DataFormatException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,6 +9,10 @@ import java.util.Arrays;
 public class Bencoding {
     private int idx;
     private byte[] input;
+
+    Bencoding(byte[] input) {
+        this.input = input;
+    }
 
     Bencoding(String input) {
         this.input = input.getBytes(StandardCharsets.UTF_8);
@@ -23,7 +28,7 @@ public class Bencoding {
         this.idx = 0;
     }
 
-    public Object decode() {
+    public Object decode() throws DataFormatException {
         if (input[idx] == 'i') {
             //Bencoded integers
             idx += 1;
@@ -33,7 +38,7 @@ public class Bencoding {
             }
             int b = idx;
             idx += 1;
-            return Integer.parseInt(new String(input, a, b - a, StandardCharsets.UTF_8));
+            return Long.parseLong(new String(input, a, b - a, StandardCharsets.UTF_8));
         } else if (Character.isDigit(input[idx])) {
             //Bencoded byte strings
             int a = idx;
@@ -66,7 +71,7 @@ public class Bencoding {
             }
             return map;
         } else {
-            return null;
+            throw new DataFormatException("The bencoded string is not formatted properly");
         }
     }
 }
