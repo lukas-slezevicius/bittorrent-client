@@ -264,7 +264,7 @@ class Metainfo {
 
     private static final byte[] HEX_ARRAY = "0123456789ABCDEF".getBytes();
 
-    private static String bytesToHex(byte[] bytes) {
+    public static String bytesToHex(byte[] bytes) {
         byte[] hexChars = new byte[bytes.length * 2];
         for (int j = 0; j < bytes.length; j++) {
             int v = bytes[j] & 0xFF;
@@ -284,6 +284,7 @@ class Metainfo {
 
     @Override
     public String toString() {
+        //Reimplement this
         String fmt = "Metainfo [info->[name->%s, pieceLength->%d, Length->%d], announce->%s";
         fmt = fmt + ", announceList->%s";
         fmt = fmt + ", creationDate->%d";
