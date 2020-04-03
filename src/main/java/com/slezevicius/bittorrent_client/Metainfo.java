@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.zip.DataFormatException;
 
-class Metainfo {
+public class Metainfo {
     private long pieceLength;
     private byte[] pieces;
     private String name;
