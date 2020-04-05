@@ -1,42 +1,105 @@
 package com.slezevicius.bittorrent_client;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.util.logging.Level;
+import java.util.logging.LogManager;
+import java.util.logging.Logger;
 import java.util.zip.DataFormatException;
 
 public class App 
 {
+    public static volatile boolean keepRunning = true;
+
+    static {
+        System.setProperty("java.util.logging.manager", MyLogManager.class.getName());
+    }
+
+    public static class MyLogManager extends LogManager {
+        static MyLogManager instance;
+
+        public MyLogManager() {
+            instance = this;
+        }
+
+        @Override
+        public void reset() {
+
+        }
+
+        private void reset0() {
+            super.reset();
+        }
+
+        public static void resetFinally() {
+            instance.reset0();
+        }
+
+
+    }
+
     public static void main( String[] args )
     {
-        /*
-        String input = "d2:abi12534e4:hahai-12e3:MYRli1ei2ed2:jji59eeee";
-        Bencoding b = new Bencoding(input);
-        Object out = b.decode();
-        System.out.println(out);
-        */
-        /*
-        byte[] cont = Tracker.sendRequest("https://api.covid19api.com/country/spain/status/confirmed");
-        try {
-            System.out.println(new String(cont, "US-ASCII"));
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-        }
-        */
+        final Thread mainThread = Thread.currentThread();
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            public void run() {
+                keepRunning = false;
+                try {
+                    mainThread.join();
+                } catch (InterruptedException e) {
+                } finally {
+                    MyLogManager.resetFinally();
+                }
+            }
+        });
+
+        Logger log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        setupLoggingConfig("/log.properties");
+
+        log.info("Starting bittorrent client");
+        String path = "/home/lukas/Programming/Projects/bittorrent-client/";
+        String file = "ubuntu-19.10-desktop-amd64.iso.torrent";
         Torrent tor;
         try {
-            String path = "/home/lukas/Programming/Projects/bittorrent-client/";
-            String file = "ubuntu-19.10-desktop-amd64.iso.torrent";
             tor = new Torrent(path + file, "-XX0100-000000000000", 6881);
         } catch (IOException e) {
-            e.printStackTrace();
+            log.log(Level.SEVERE, e.getMessage(), e);
             return;
         } catch (DataFormatException e) {
-            e.printStackTrace();
+            log.log(Level.SEVERE, e.getMessage(), e);
             return;
         } catch (URISyntaxException e) {
-            e.printStackTrace();
+            log.log(Level.SEVERE, e.getMessage(), e);
             return;
         }
-        //System.out.println(tor);
+        tor.start();
+
+        while (keepRunning) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {}
+        }
+        log.info("Shutting down bittorrent client");
+        tor.stopRunning();
+        try {
+            tor.join();
+        } catch (InterruptedException e) {
+            log.warning("Could not shut down bittorrent client properly");
+            return;
+        }
+        log.info("Bittorrent client properly shut down");
+    }
+
+    static void setupLoggingConfig(String configName) {
+        try {
+            String configPath = System.getProperty("user.dir") + configName;
+            FileInputStream configFile = new FileInputStream(configPath);
+            LogManager.getLogManager().readConfiguration(configFile);
+            configFile.close();
+        } catch (IOException e) {
+            System.out.println("WARNING: Could not open configuration file");
+            System.out.println("WARNING: Logging not configured (console output only)");
+        }
     }
 }

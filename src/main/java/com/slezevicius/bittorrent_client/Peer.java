@@ -5,28 +5,38 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Peer extends Thread { 
     private Torrent torrent;
+    private PeerManager peerManager;
+    private volatile ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> orderQueue;
+    private volatile ConcurrentLinkedQueue<ArrayList<Object>> pieceQueue;
     private InetAddress ip;
     private int port;
     private Socket sock;
     private DataOutputStream out;
     private DataInputStream in;
-    private ConcurrentLinkedQueue<String> queue;
-    private boolean amChoking = true;
-    private boolean amInterested = false;
-    private boolean peerChocking = true;
-    private boolean peerInterested = false;
+    private volatile boolean amChoking = true;
+    private volatile boolean amInterested = false;
+    private volatile boolean peerChocking = true;
+    private volatile boolean peerInterested = false;
+    private volatile byte[] peerBitfield;
+    private volatile boolean keepRunning = true;
 
-    Peer(Pair<InetAddress, Integer> pair, Torrent torrent) throws IOException {
+    Peer(Pair<InetAddress, Integer> pair, Torrent torrent, PeerManager peerManager) throws IOException {
         this.torrent = torrent;
+        this.peerManager = peerManager;
+        orderQueue = new ConcurrentLinkedQueue<>();
+        peerManager.addPeer(this);
+        pieceQueue = peerManager.getPieceQueue();
         ip = pair.getLeft();
         port = pair.getRight();
         sock = new Socket(ip, port);
         out = new DataOutputStream(sock.getOutputStream());
         in = new DataInputStream(sock.getInputStream());
+        peerBitfield = new byte[torrent.getBitfieldLength()];
         handshake();
     }
 
@@ -41,9 +51,9 @@ public class Peer extends Thread {
                 e.printStackTrace();
                 break;
             }
-            String order = queue.poll(); //Change the order data type to some custom class
+            Pair<String, ArrayList<Object>> order = orderQueue.poll();
             try {
-                switch (order) {
+                switch (order.getLeft()) {
                     case "keep-alive":
                         //Keep alive
                         break;
@@ -60,19 +70,19 @@ public class Peer extends Thread {
                         uninterested();
                         break;
                     case "have":
-                        have();
+                        have(order.getRight());
                         break;
                     case "bitfield":
                         bitfield();
                         break;
                     case "request":
-                        request();
+                        request(order.getRight());
                         break;
                     case "piece":
-                        piece();
+                        piece(order.getRight());
                         break;
                     case "cancel":
-                        cancel();
+                        cancel(order.getRight());
                         break;
                     case "port":
                         port();
@@ -131,7 +141,7 @@ public class Peer extends Thread {
                 receivePort();
                 break;
             case 20:
-                receiveExtension();
+                receiveExtension(payloadLength);
                 break;
             default:
                 //Log this
@@ -186,17 +196,21 @@ public class Peer extends Thread {
         send((byte) 3);
     }
 
-    private void have(int idx) throws IOException {
+    private void have(ArrayList<Object> args) throws IOException {
+        int idx = (int) args.get(0);
         byte[] payload = intToUInt32(idx);
         send((byte) 6, payload);
     }
 
     private void bitfield() throws IOException {
-        byte[] bitfield = torrent.getBitfield();
+        byte[] bitfield = peerManager.getBitfield();
         send((byte) 5, bitfield);
     }
 
-    private void request(int idx, int begin, int length) throws IOException {
+    private void request(ArrayList<Object> args) throws IOException {
+        int idx = (int) args.get(0);
+        int begin = (int) args.get(1);
+        int length = (int) args.get(2);
         byte[] payload = new byte[12];
         byte[] idxUint32 = intToUInt32(idx);
         byte[] beginUint32 = intToUInt32(begin);
@@ -210,7 +224,10 @@ public class Peer extends Thread {
         send((byte) 6, payload);
     }
 
-    private void piece(int idx, int begin, byte[] block) throws IOException {
+    private void piece(ArrayList<Object> args) throws IOException {
+        int idx = (int) args.get(0);
+        int begin = (int) args.get(1);
+        byte[] block = (byte[]) args.get(2);
         byte[] payload = new byte[8 + block.length];
         byte[] idxUint32 = intToUInt32(idx);
         byte[] beginUint32 = intToUInt32(begin);
@@ -224,7 +241,10 @@ public class Peer extends Thread {
         send((byte) 7, payload);
     }
 
-    private void cancel(int idx, int begin, int length) throws IOException {
+    private void cancel(ArrayList<Object> args) throws IOException {
+        int idx = (int) args.get(0);
+        int begin = (int) args.get(1);
+        int length = (int) args.get(2);
         byte[] payload = new byte[12];
         byte[] idxUint32 = intToUInt32(idx);
         byte[] beginUint32 = intToUInt32(begin);
@@ -283,31 +303,89 @@ public class Peer extends Thread {
         for (int i = 3; i >= 0; i--) {
             idx += (in.readByte() & 0xFF) * Math.pow(256, i);
         }
-        //Place the value in a have queue
+        int B = (int) (idx/8);
+        int b = idx % 8;
+        peerBitfield[B] |= (byte) ((int) Math.pow(2, b));
     }
 
-    private void receiveBitfield(int length) {
-
+    private void receiveBitfield(int length) throws IOException {
+        if (length != peerBitfield.length) {
+            throw new RuntimeException("Peer bitfield does not match the expected size");
+        }
+        for (int i = 0; i < length; i++) {
+            peerBitfield[i] = in.readByte();
+        }
     }
 
-    private void receiveRequest() {
-
+    private void receiveRequest() throws IOException {
+        int idx = 0;
+        for (int i = 3; i >= 0; i--) {
+            idx += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        int begin = 0;
+        for (int i = 3; i >= 0; i--) {
+            begin += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        int length = 0;
+        for (int i = 3; i >= 0; i--) {
+            length += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        peerManager.receivedRequest(this, idx, begin, length);
     }
 
-    private void receivePiece(int length) {
-
+    private void receivePiece(int length) throws IOException {
+        int idx = 0;
+        for (int i = 3; i >= 0; i--) {
+            idx += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        int begin = 0;
+        for (int i = 3; i >= 0; i--) {
+            begin += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        byte[] block = new byte[length - 8];
+        for (int i = 0; i < length - 8; i++) {
+            block[i] = in.readByte();
+        }
+        ArrayList<Object> piece = new ArrayList<>();
+        piece.add(idx);
+        piece.add(begin);
+        piece.add(block);
+        pieceQueue.add(piece);
     }
 
-    private void receiveCancel() {
-
+    private void receiveCancel() throws IOException {
+        int idx = 0;
+        for (int i = 3; i >= 0; i--) {
+            idx += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        int begin = 0;
+        for (int i = 3; i >= 0; i--) {
+            begin += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        int length = 0;
+        for (int i = 3; i >= 0; i--) {
+            length += (in.readByte() & 0xFF) * Math.pow(256, i);
+        }
+        peerManager.receivedCancel(this, idx, begin, length);
     }
 
-    private void receivePort() {
-
+    private void receivePort() throws IOException {
+        byte b1 = in.readByte();
+        byte b2 = in.readByte();
+        int port = (b1 & 0xFF)*265 + (b2 & 0xFF);
     }
 
-    private void receiveExtension() {
-
+    private void receiveExtension(int length) throws IOException {
+        for (int i = 0; i < length; i++) {
+            in.readByte();
+        }
+        //byte extendedId = in.readByte();
+        byte extendedId = 0;
+        if (extendedId == 0) {
+            //Implement the extension hanshake
+        } else {
+            //Implement other extensions
+        }
     }
 
     public boolean getAmChocking() {
@@ -324,5 +402,13 @@ public class Peer extends Thread {
 
     public boolean getPeerInterested() {
         return peerInterested;
+    }
+
+    public ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> getOrderQueue() {
+        return orderQueue;
+    } 
+
+    public void stopRunning() {
+        keepRunning = false;
     }
 }
