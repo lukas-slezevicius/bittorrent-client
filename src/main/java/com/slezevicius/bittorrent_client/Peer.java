@@ -5,8 +5,14 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.zip.DataFormatException;
 
 public class Peer extends Thread { 
     private Torrent torrent;
@@ -24,35 +30,56 @@ public class Peer extends Thread {
     private volatile boolean peerInterested = false;
     private volatile byte[] peerBitfield;
     private volatile boolean keepRunning = true;
+    private boolean LTEP = false;
+    private boolean DHT = false;
+    private Logger log;
 
-    Peer(Pair<InetAddress, Integer> pair, Torrent torrent, PeerManager peerManager) throws IOException {
+    Peer(Pair<InetAddress, Integer> pair, Torrent torrent, PeerManager peerManager) {
+        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        log.setLevel(Level.ALL);
         this.torrent = torrent;
         this.peerManager = peerManager;
+        peerBitfield = new byte[torrent.getBitfieldLength()];
         orderQueue = new ConcurrentLinkedQueue<>();
-        peerManager.addPeer(this);
         pieceQueue = peerManager.getPieceQueue();
         ip = pair.getLeft();
         port = pair.getRight();
-        sock = new Socket(ip, port);
-        out = new DataOutputStream(sock.getOutputStream());
-        in = new DataInputStream(sock.getInputStream());
-        peerBitfield = new byte[torrent.getBitfieldLength()];
-        handshake();
+    }
+
+    Peer(Socket sock, PeerManager peerManager)
+            throws IOException, DataFormatException, InterruptedException, SecurityException {
+        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        log.setLevel(Level.ALL);
+        this.peerManager = peerManager;
+        ip = sock.getInetAddress();
+        port = sock.getPort();
+        receiveHandshake();
+        sendHandshake();
     }
 
     @Override
     public void run() {
-        while (true) {
-            try {
+        try {
+            peerManager.addPeer(this);
+            sock = new Socket(ip, port);
+            out = new DataOutputStream(sock.getOutputStream());
+            in = new DataInputStream(sock.getInputStream());
+            sendHandshake();
+            receiveHandshake();
+            while (true) {
+                synchronized(this) {
+                    if (!keepRunning) {
+                        sock.close();
+                        return;
+                    }
+                }
                 if (in.available() > 0) {
                     readMessage();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
-                break;
-            }
-            Pair<String, ArrayList<Object>> order = orderQueue.poll();
-            try {
+                Pair<String, ArrayList<Object>> order = orderQueue.poll();
+                if (order == null) {
+                    continue;
+                }
                 switch (order.getLeft()) {
                     case "keep-alive":
                         //Keep alive
@@ -88,13 +115,20 @@ public class Peer extends Thread {
                         port();
                         break;
                     default:
-                        throw new RuntimeException(
-                            String.format("Unexpected order from the peer manager: %s", order));
+                        log.warning(String.format("%s unexpected order: %s", this.toString(), order.getLeft()));
+                        return;
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
-                break;
             }
+        } catch (IOException e) {
+            log.warning(String.format("%s IOException"));
+            log.log(Level.WARNING, e.getMessage(), e);
+        } catch (InterruptedException e) {
+            log.warning(String.format("%s got interrupted", this.toString()));
+            log.log(Level.WARNING, e.getMessage(), e);
+        } catch (SecurityException e) {
+            log.log(Level.WARNING, e.getMessage(), e);
+        } catch (DataFormatException e) {
+            log.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -144,14 +178,9 @@ public class Peer extends Thread {
                 receiveExtension(payloadLength);
                 break;
             default:
-                //Log this
+                log.warning(String.format("%s unknown message id %d", this.toString(), id));
                 in.skipBytes(payloadLength);
         }
-    }
-
-    private void handshake() throws IOException {
-        sendHandshake();
-        receiveHandshake(); //The first message after handshake is always a handshake
     }
 
     private void sendHandshake() throws IOException {
@@ -177,7 +206,65 @@ public class Peer extends Thread {
         out.flush();
     }
 
-    private void receiveHandshake() throws IOException {
+    private void receiveHandshake()
+            throws IOException, DataFormatException, InterruptedException, SecurityException {
+        Instant startTime = Clock.systemUTC().instant();
+        while (true) {
+            if (!Clock.systemUTC().instant().isBefore(startTime.plusSeconds(5))) {
+                throw new IOException(String.format("%s timeout for handshake.", this.toString()));
+            }
+            if (in.available() > 0) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+        byte pstrlen = in.readByte();
+        if (pstrlen != 19) {
+            log.warning(String.format("%s received pstrlen is not 19", this.toString()));
+            throw new DataFormatException("pstrlen is " + pstrlen);
+        }
+        StringBuilder pstr = new StringBuilder();
+        for (int i = 0; i < pstrlen; i++) {
+            pstr.append((char) in.readByte());
+        }
+        if (!pstr.toString().equals("BitTorrent protocol")) {
+            log.warning(String.format("%s received pst is not as expected", this.toString()));
+            throw new DataFormatException("pstr is " + pstr.toString());
+        }
+        byte[] reserved = new byte[8];
+        for (int i = 0; i < reserved.length; i++) {
+            reserved[i] = in.readByte();
+        }
+        parseReserved(reserved);
+        byte[] infoHash = new byte[20];
+        for (int i = 0; i < infoHash.length; i++) {
+            infoHash[i] = in.readByte();
+        }
+        if (torrent != null) {
+            if (!Arrays.equals(infoHash, torrent.getInfoHash())) {
+                log.warning(String.format("%s info hash does not match"));
+                throw new SecurityException("Received info hash " + Metainfo.bytesToHex(infoHash));
+            }
+        } else {
+            torrent = peerManager.getTorrent(infoHash);
+            if (torrent == null) {
+                throw new SecurityException("Received an unrecognized info hash");
+            }
+        }
+        byte[] peerId = new byte[20];
+        for (int i = 0; i < peerId.length; i++) {
+            peerId[i] = in.readByte();
+        }
+        //Potential threat if peerId does not match the one given by the tracker
+    }
+
+    private void parseReserved(byte[] reserved) {
+        if ((reserved[5] & 0x10) == 0x10) {
+            LTEP = true;
+        }
+        if ((reserved[7] & 0x01) == 0x01) {
+            DHT = true;
+        }
     }
 
     private void choke() throws IOException {
@@ -308,9 +395,9 @@ public class Peer extends Thread {
         peerBitfield[B] |= (byte) ((int) Math.pow(2, b));
     }
 
-    private void receiveBitfield(int length) throws IOException {
+    private void receiveBitfield(int length) throws IOException, SecurityException {
         if (length != peerBitfield.length) {
-            throw new RuntimeException("Peer bitfield does not match the expected size");
+            throw new SecurityException("Peer bitfield does not match the expected size");
         }
         for (int i = 0; i < length; i++) {
             peerBitfield[i] = in.readByte();
@@ -377,7 +464,7 @@ public class Peer extends Thread {
 
     private void receiveExtension(int length) throws IOException {
         for (int i = 0; i < length; i++) {
-            in.readByte();
+            in.readByte(); //Temporary ignore
         }
         //byte extendedId = in.readByte();
         byte extendedId = 0;
@@ -404,11 +491,38 @@ public class Peer extends Thread {
         return peerInterested;
     }
 
+    public InetAddress getIp() {
+        return ip;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
     public ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> getOrderQueue() {
         return orderQueue;
     } 
 
-    public void stopRunning() {
+    public synchronized void stopRunning() {
         keepRunning = false;
+    }
+
+    @Override
+    public int hashCode() {
+        return ip.hashCode() ^ Integer.hashCode(port);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof Peer)) {
+            return false;
+        }
+        Peer peer = (Peer) obj;
+        return this.ip.equals(peer.getIp()) && this.port == peer.getPort();
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Peer[ip=%s, port=%s]", ip.toString(), String.valueOf(port));
     }
 }

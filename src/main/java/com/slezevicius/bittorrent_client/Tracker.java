@@ -37,18 +37,23 @@ public class Tracker extends Thread {
 
     Tracker(Metainfo metainfo, Torrent torrent) throws URISyntaxException, DataFormatException {
         log  = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        log.setLevel(Level.ALL);
         this.metainfo = metainfo;
         this.torrent = torrent;
+        log.finest(String.format("%s initialized", this.toString()));
     }
 
     @Override
     public void run() {
         try {
             send("started");
+            log.finest(String.format("%s sent started", this.toString()));
+            log.finest("Gonna sleep for " + interval);
             Thread.sleep(interval * 1000);
             while (true) {
                 send("");
                 Thread.sleep(interval * 1000);
+                log.finest(String.format("%s sent update"));
             }
         } catch (IOException e) {
             log.log(Level.WARNING, e.getMessage(), e);
@@ -63,8 +68,10 @@ public class Tracker extends Thread {
                 try {
                     if (completed) {
                         send("completed"); //Make sure that this receives a response
+                        log.finest(String.format("%s sent completed", this.toString()));
                     } else {
                         send("stopped");
+                        log.finest(String.format("%s sent stopped", this.toString()));
                     }
                 } catch (Exception e2) {
                     log.warning(String.format("%s: Could not send the final message to the tracker", this.toString()));

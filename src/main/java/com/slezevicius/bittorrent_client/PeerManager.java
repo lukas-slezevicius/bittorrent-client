@@ -3,24 +3,37 @@ package com.slezevicius.bittorrent_client;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class PeerManager extends Thread {
+    private TorrentManager torrentManager;
     private byte[] bitfield;
+
     private volatile ConcurrentLinkedQueue<ArrayList<Object>> pieceQueue;
     private HashSet<Peer> peers;
-    private boolean stop = false;
     private volatile boolean keepRunning = true;
+    private Logger log;
 
+    /*
     PeerManager(int bitfieldLength) {
+        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        log.setLevel(Level.ALL);
         bitfield = new byte[bitfieldLength];
         pieceQueue = new ConcurrentLinkedQueue<>();
         peers = new HashSet<Peer>();
     }
 
     PeerManager(byte[] bitfield) {
+        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        log.setLevel(Level.ALL);
         this.bitfield = bitfield;
         pieceQueue = new ConcurrentLinkedQueue<>();
         peers = new HashSet<Peer>();
+    }
+    */
+    PeerManager(TorrentManager torrentManager) {
+        this.torrentManager = torrentManager;
     }
 
     @Override
@@ -44,6 +57,10 @@ public class PeerManager extends Thread {
                 }
             }
         }
+    }
+
+    public Torrent getTorrent(byte[] infoHash) {
+
     }
 
     private void updatePiece(int idx, int begin, byte[] block) {

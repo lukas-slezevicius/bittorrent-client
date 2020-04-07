@@ -22,33 +22,37 @@ public class Torrent extends Thread {
 
     Torrent(String filepath, String peerId, int port) throws DataFormatException, IOException, URISyntaxException {
         log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        log.setLevel(Level.ALL);
         this.port = port;
         this.peerId = peerId;
         metainfo = new Metainfo(filepath);
         tracker = new Tracker(metainfo, this);
         tracker.start();
         peerManager = new PeerManager(getBitfieldLength());
-        peers = new HashSet<>();
+        peers = new HashSet<>(50);
         log.info("Initialized torrent " + this.toString());
     }
 
     public void run() {
         try {
-            for (Pair<InetAddress, Integer> pair : tracker.getPeers()) {
-                /*
-                try {
-                    Peer peer = new Peer(pair, this, peerManager); 
-                    peers.add(peer);
-                    peer.start();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    continue;
+            while (tracker.getPeers() == null) {
+                Thread.sleep(100);
+            }
+            while (true) {
+                if (peers.size() <= 50) {
+                    for (Pair<InetAddress, Integer> pair : tracker.getPeers()) {
+                        Peer peer = new Peer(pair, this, peerManager); 
+                        if (!peers.contains(peer)) {
+                            peers.add(peer);
+                            peer.start();
+                        }
+                    }
                 }
-                */
-                break;
-            };
-            while (keepRunning) {
-                Thread.sleep(50);
+                synchronized(this) {
+                    if (!keepRunning) {
+                        break;
+                    }
+                }
             }
         } catch (InterruptedException e) {
             return;
@@ -80,7 +84,7 @@ public class Torrent extends Thread {
         return (int) ((metainfo.getPieces().length/20)/8 + 1);
     }
 
-    public void stopRunning() {
+    public synchronized void stopRunning() {
         keepRunning = false;
     }
 
