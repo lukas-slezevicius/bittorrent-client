@@ -58,6 +58,19 @@ public class App
         setupLoggingConfig("/log.properties");
 
         log.info("Starting bittorrent client");
+        int port = 6881;
+        String peerId = "-XX0100-000000000000";
+        TorrentManager torrentManager = new TorrentManager();
+        PeerManager peerManager;
+        try {
+            peerManager = new PeerManager(peerId, port);
+        } catch (IOException e) {
+            log.log(Level.WARNING, e.getMessage(), e);
+            return;
+        }
+        torrentManager.addPeerManager(peerManager);
+        peerManager.addTorrentManager(torrentManager);
+        peerManager.start();
         String path = "/home/lukas/Programming/Projects/bittorrent-client/";
         String file = "ubuntu-19.10-desktop-amd64.iso.torrent";
         Torrent tor;

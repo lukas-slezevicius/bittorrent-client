@@ -19,6 +19,7 @@ public class Peer extends Thread {
     private PeerManager peerManager;
     private volatile ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> orderQueue;
     private volatile ConcurrentLinkedQueue<ArrayList<Object>> pieceQueue;
+    private volatile ConcurrentLinkedQueue<Request> requestQueue;
     private InetAddress ip;
     private int port;
     private Socket sock;
@@ -33,6 +34,12 @@ public class Peer extends Thread {
     private boolean LTEP = false;
     private boolean DHT = false;
     private Logger log;
+
+    Peer(Pair<InetAddress, Integer> paid, PeerManager peerManager) {
+        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        log.setLevel(Level.ALL);
+        this.peerManager = peerManager;
+    }
 
     Peer(Pair<InetAddress, Integer> pair, Torrent torrent, PeerManager peerManager) {
         log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
@@ -76,7 +83,10 @@ public class Peer extends Thread {
                 if (in.available() > 0) {
                     readMessage();
                 }
-                Pair<String, ArrayList<Object>> order = orderQueue.poll();
+                Pair<String, ArrayList<Object>> order;
+                synchronized(orderQueue) {
+                    order = orderQueue.poll();
+                }
                 if (order == null) {
                     continue;
                 }
@@ -129,6 +139,12 @@ public class Peer extends Thread {
             log.log(Level.WARNING, e.getMessage(), e);
         } catch (DataFormatException e) {
             log.log(Level.WARNING, e.getMessage(), e);
+        }
+    }
+
+    public void addOrder(Pair<String, ArrayList<Object>> order) {
+        synchronized(orderQueue) {
+            orderQueue.add(order);
         }
     }
 
@@ -211,7 +227,7 @@ public class Peer extends Thread {
         Instant startTime = Clock.systemUTC().instant();
         while (true) {
             if (!Clock.systemUTC().instant().isBefore(startTime.plusSeconds(5))) {
-                throw new IOException(String.format("%s timeout for handshake.", this.toString()));
+                throw new IOException(String.format("%s timeout peerInfofor handshake.", this.toString()));
             }
             if (in.available() > 0) {
                 break;
@@ -417,7 +433,13 @@ public class Peer extends Thread {
         for (int i = 3; i >= 0; i--) {
             length += (in.readByte() & 0xFF) * Math.pow(256, i);
         }
-        peerManager.receivedRequest(this, idx, begin, length);
+        if (length > Math.pow(2, 15)) {
+            log.finer("The requested piece size was too big; request dropped");
+            return;
+        }
+        synchronized(requestQueue) {
+            requestQueue.add(new Request(idx, begin, length));
+        }
     }
 
     private void receivePiece(int length) throws IOException {
@@ -475,20 +497,28 @@ public class Peer extends Thread {
         }
     }
 
-    public boolean getAmChocking() {
+    public synchronized boolean getAmChocking() {
         return amChoking;
     }
 
-    public boolean getAmInterested() {
+    public synchronized boolean getAmInterested() {
         return amInterested;
     }
 
-    public boolean getPeerChocking() {
+    public synchronized boolean getPeerChocking() {
         return peerChocking;
     }
 
-    public boolean getPeerInterested() {
+    public synchronized boolean getPeerInterested() {
         return peerInterested;
+    }
+
+    public synchronized void setAmChocking(boolean value) {
+        amChoking = value;
+    }
+
+    public synchronized void setAmInterested(boolean value) {
+        amInterested = value;
     }
 
     public InetAddress getIp() {
@@ -502,6 +532,12 @@ public class Peer extends Thread {
     public ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> getOrderQueue() {
         return orderQueue;
     } 
+
+    public Request getRequest() {
+        synchronized(requestQueue) {
+            return requestQueue.poll();
+        }
+    }
 
     public synchronized void stopRunning() {
         keepRunning = false;
