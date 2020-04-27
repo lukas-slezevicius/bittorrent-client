@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -22,6 +23,12 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 
+/**
+ * Tracker object that deals with the bittorrent tracker for
+ * a particular torrent file. Keeps updating the tracker
+ * with the required interval time. Allows other classes
+ * to get updates on the current known peers.
+ */
 public class Tracker extends Thread {
     private Metainfo metainfo;
     private Torrent torrent;
@@ -29,11 +36,10 @@ public class Tracker extends Thread {
     private String trackerId;
     private long complete;
     private long incomplete;
-    private Set<Pair<InetAddress, Integer>> peers;
+    private volatile List<Pair<InetAddress, Integer>> peers;
+    private volatile boolean receivedNewPeers = false;
     private volatile boolean keepRunning = true;
-    private volatile boolean completed = false;
     private Logger log;
-
 
     Tracker(Metainfo metainfo, Torrent torrent) throws URISyntaxException, DataFormatException {
         log  = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
@@ -43,15 +49,25 @@ public class Tracker extends Thread {
         log.finest(String.format("%s initialized", this.toString()));
     }
 
+    /**
+     * The thread's main loop for the tracker. Keeps sending
+     * update tracker messages at a specified interval.
+     */
     @Override
     public void run() {
         try {
             send("started");
+            synchronized(this) {
+                receivedNewPeers = true;
+            }
             log.finest(String.format("%s sent started", this.toString()));
             log.finest("Gonna sleep for " + interval);
             Thread.sleep(interval * 1000);
-            while (true) {
+            while (keepRunning) {
                 send("");
+                synchronized(this) {
+                    receivedNewPeers = true;
+                }
                 Thread.sleep(interval * 1000);
                 log.finest(String.format("%s sent update"));
             }
@@ -64,23 +80,30 @@ public class Tracker extends Thread {
         } catch (InterruptedException e) {
             if (keepRunning) {
                 log.warning(String.format("%s: The thread was interrupted", this.toString()));
-            } else {
-                try {
-                    if (completed) {
-                        send("completed"); //Make sure that this receives a response
-                        log.finest(String.format("%s sent completed", this.toString()));
-                    } else {
-                        send("stopped");
-                        log.finest(String.format("%s sent stopped", this.toString()));
-                    }
-                } catch (Exception e2) {
-                    log.warning(String.format("%s: Could not send the final message to the tracker", this.toString()));
-                    log.log(Level.WARNING, e2.getMessage(), e2);
-                }
+                return;
             }
         }
+        try {
+            if (torrent.isComplete()) {
+                send("completed"); //Make sure that this receives a response
+                log.finest(String.format("%s sent completed", this.toString()));
+            } else {
+                send("stopped");
+                log.finest(String.format("%s sent stopped", this.toString()));
+            }
+        } catch (Exception e) {
+            log.warning(String.format("%s: Could not send the final message to the tracker", this.toString()));
+            log.log(Level.WARNING, e.getMessage(), e);
+        }
     }
-
+    
+    /** 
+     * Sends a message to the tracker with the given event.
+     * @param event: the event parameter to send.
+     * @throws URISyntaxException
+     * @throws DataFormatException
+     * @throws IOException
+     */
     private void send(String event) throws URISyntaxException, DataFormatException, IOException {
         String trackerURI = buildTrackerURL(event);
         byte[] responseContent = sendRequest(trackerURI);
@@ -88,7 +111,12 @@ public class Tracker extends Thread {
         Object responseObject = b.decode();
         updateFields(responseObject);
     }
-
+    
+    /** 
+     * Updates the tracker fields from the decoded tracker response.
+     * @param responseObject
+     * @throws DataFormatException: If the response did not follow the tracker protocol properly.
+     */
     private void updateFields(Object responseObject) throws DataFormatException {
         if (responseObject instanceof LinkedHashMap) {
             LinkedHashMap<String, Object> responseDict = (LinkedHashMap<String, Object>) responseObject;
@@ -138,10 +166,14 @@ public class Tracker extends Thread {
             if (responseDict.containsKey("peers")) {
                 if (responseDict.get("peers") instanceof ArrayList) {
                     //List model of peers
-                    updatePeers((ArrayList<Object>) responseDict.get("peers"));
+                    synchronized(this) {
+                        updatePeers((ArrayList<Object>) responseDict.get("peers"));
+                    }
                 } else if (responseDict.get("peers") instanceof byte[]) {
                     //Compact model of peers
-                    updatePeers((byte[]) responseDict.get("peers"));
+                    synchronized(this) {
+                        updatePeers((byte[]) responseDict.get("peers"));
+                    }
                 } else {
                     throw new DataFormatException(String.format("%s peers is of an invalid type", this.toString()));
                 }
@@ -153,11 +185,16 @@ public class Tracker extends Thread {
         }
     }
 
+    /** 
+     * Updates the peer fields from the compact peer representation.
+     * @param peerBytes
+     * @throws DataFormatException
+     */
     private void updatePeers(byte[] peerBytes) throws DataFormatException {
         if (peerBytes.length % 6 != 0) {
             throw new DataFormatException(String.format("%s invalid length of peer byte array", this.toString()));
         }
-        peers = new HashSet<Pair<InetAddress, Integer>>(50);
+        peers = new ArrayList<>();
         int i = 0;
         while (i < peerBytes.length) {
             InetAddress ip;
@@ -172,9 +209,14 @@ public class Tracker extends Thread {
             i += 6;
         }
     }
-
+    
+    /** 
+     * Updates the peer fields from the dictionary peer representation.
+     * @param peerList
+     * @throws DataFormatException
+     */
     private void updatePeers(ArrayList<Object> peerList) throws DataFormatException {
-        peers = new HashSet<Pair<InetAddress, Integer>>(50);
+        peers = new ArrayList<>();
         for (Object obj : peerList) {
             if (obj instanceof HashMap) {
                 HashMap<String, Object> dict = (HashMap<String, Object>) obj;
@@ -212,7 +254,13 @@ public class Tracker extends Thread {
             }
         }
     }
-
+    
+    /** 
+     * Builds the required url with the needed parameters for requesting the
+     * tracker.
+     * @param event
+     * @return String
+     */
     private String buildTrackerURL(String event) {
         StringBuilder url = new StringBuilder(metainfo.getAnnounce());
         url.append("?info_hash=");
@@ -237,6 +285,11 @@ public class Tracker extends Thread {
         return new String(url);
     }
 
+    /** 
+     * Percent encodes the infoHash to be compliant with the url character rules.
+     * @param in: infoHash to percent encode.
+     * @return percent encoded String.
+     */
     private static String percentEncode(byte[] in) {
         StringBuilder out = new StringBuilder(in.length * 2);
         for (int i = 0; i < in.length; i++) {
@@ -249,21 +302,35 @@ public class Tracker extends Thread {
         }
         return new String(out);
     }
-
+    
+    /** 
+     * @param c
+     * @return boolean whether a character is a letter/digit
+     */
     private static boolean isLetterOrDigit(byte c) {
         if ((c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57)) {
             return true;
         }
         return false;
     }
-
+    
+    /** 
+     * @param c
+     * @return boolean whether a character is special (for url exceptions)
+     */
     private static boolean isSpecialChar(byte c) {
         if (c == '_' || c == '-' || c == '.' || c == '~') {
             return true;
         }
         return false;
     }
-
+    
+    /** 
+     * Sends the request to the given url.
+     * @param url
+     * @return byte[]
+     * @throws IOException
+     */
     private static byte[] sendRequest(String url) throws IOException {
         CloseableHttpClient httpclient = HttpClients.createDefault();
         HttpGet httpGet = new HttpGet(url);
@@ -275,28 +342,60 @@ public class Tracker extends Thread {
         EntityUtils.consume(entity);
         return content;
     }
-
+    
+    /** 
+     * @return long
+     */
     public long getInterval() {
         return interval;
     }
-
+    
+    /** 
+     * @return long
+     */
     public long getComplete() {
         return complete;
     }
 
+    /** 
+     * @return long
+     */
     public long getIncomplete() {
         return incomplete;
     }
 
-    public Set<Pair<InetAddress, Integer>> getPeers() {
+    /**
+     * @return boolean whether new peers have been received.
+     */
+    public synchronized boolean newPeers() {
+        return receivedNewPeers;
+    }
+
+    /**
+     * Sets the receivedNewPeers to false once the new peers have been taken.
+     */
+    public synchronized void takenNewPeers() {
+        receivedNewPeers = false;
+    }
+
+    /**
+     * @return List<Pair<InetAddress, Integer>>
+     */
+    public synchronized List<Pair<InetAddress, Integer>> getNewPeers() {
         return peers;
     }
 
-    public void stopRunning() {
+    /**
+     * Graciously shuts down the tracker.
+     */
+    public void shutdown() {
         keepRunning = false;
         this.interrupt();
     }
-
+    
+    /** 
+     * @return String for printing.
+     */
     @Override
     public String toString() {
         return String.format("Tracker [name=%s, url=%s]", metainfo.getName(), metainfo.getAnnounce());

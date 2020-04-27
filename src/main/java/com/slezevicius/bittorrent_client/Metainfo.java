@@ -11,7 +11,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.zip.DataFormatException;
 
+/**
+ * A class to represent a bittorrent metainfo file.
+ */
 public class Metainfo {
+    private static final byte[] HEX_ARRAY = "0123456789ABCDEF".getBytes();
     private long pieceLength;
     private byte[] pieces;
     private String name;
@@ -24,19 +28,23 @@ public class Metainfo {
     private String encoding;
     private byte[] infoHash;
 
-    Metainfo(String filepath) throws DataFormatException, IOException {
-        Bencoding b = new Bencoding(readFile(filepath));
+    Metainfo(File file) throws DataFormatException, IOException {
+        Bencoding b = new Bencoding(readFile(file));
         updateFields(b.decode());
     }
 
-    private byte[] readFile(String filepath) throws IOException {
-        File file = new File(filepath);
+    private byte[] readFile(File file) throws IOException {
         InputStream stream = new FileInputStream(file);
         byte[] output = stream.readAllBytes();
         stream.close();
         return output;
     }
-
+    
+    /** 
+     * Updates the fields of the class based on the decoded object.
+     * @param data: a decoded bencoding object.
+     * @throws DataFormatException: If the object did not meet the metainfo file requirements.
+     */
     private void updateFields(Object data) throws DataFormatException {
         if (data instanceof LinkedHashMap) {
             //The data linkedhashmap is guaranteed to be of type signature <String, Object> by Bencoding
@@ -52,7 +60,12 @@ public class Metainfo {
             throw new DataFormatException("Metainfo file should be a bencoded dictionary");
         }
     }
-
+    
+    /** 
+     * Updates the fields contained in the info dictionary.
+     * @param metaDict
+     * @throws DataFormatException
+     */
     private void updateInfo(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "info";
         if (metaDict.containsKey(keyName)) {
@@ -68,7 +81,12 @@ public class Metainfo {
             throw new DataFormatException("Metainfo dict must contain the " + keyName + " key");
         }
     }
-
+    
+    /** 
+     * Updates the infoHash field based on the infoDict.
+     * @param infoDict
+     * @throws DataFormatException
+     */
     private void updateInfoHash(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         ArrayList<Byte> ByteList = Bencoding.encode(infoDict);
         Byte[] ByteArray = new Byte[ByteList.size()];
@@ -85,7 +103,12 @@ public class Metainfo {
         }
         infoHash = md.digest(byteArray);
     }
-
+    
+    /** 
+     * Updates the pieceLength field based on the infoDict.
+     * @param infoDict
+     * @throws DataFormatException
+     */
     private void updatePieceLength(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "piece length";
         if (infoDict.containsKey(keyName)) {
@@ -98,7 +121,12 @@ public class Metainfo {
             throw new DataFormatException("Metainfo dict must contain the " + keyName + " key");
         }
     }
-
+    
+    /** 
+     * Updates the Pieces field based on the infoDict.
+     * @param infoDict
+     * @throws DataFormatException
+     */
     private void updatePieces(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "pieces";
         if (infoDict.containsKey(keyName)) {
@@ -111,7 +139,12 @@ public class Metainfo {
             throw new DataFormatException("Metainfo dict must contain the " + keyName + " key");
         }
     }
-
+    
+    /** 
+     * Updates the name field based on the infoDict.
+     * @param infoDict
+     * @throws DataFormatException
+     */
     private void updateName(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "name";
         if (infoDict.containsKey(keyName)) {
@@ -124,7 +157,12 @@ public class Metainfo {
             throw new DataFormatException("Metainfo dict must contain the " + keyName + " key");
         }
     }
-
+    
+    /** 
+     * Updates the length field based on the infoDict.
+     * @param infoDict
+     * @throws DataFormatException
+     */
     private void updateLength(LinkedHashMap<String, Object> infoDict) throws DataFormatException {
         String keyName = "length";
         if (infoDict.containsKey(keyName)) {
@@ -137,7 +175,12 @@ public class Metainfo {
             throw new DataFormatException("Metainfo dict must contain the " + keyName + " key");
         }
     }
-
+    
+    /** 
+     * Updates the announce url based on the metaDict.
+     * @param metaDict
+     * @throws DataFormatException
+     */
     private void updateAnnounce(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "announce";
         if (metaDict.containsKey(keyName)) {
@@ -150,7 +193,12 @@ public class Metainfo {
             throw new DataFormatException("Metainfo dict must contain the " + keyName + " key");
         }
     }
-
+    
+    /** 
+     * Updates the announce urls list based on the metaDict.
+     * @param metaDict
+     * @throws DataFormatException
+     */
     private void updateAnnounceList(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "announce-list";
         if (metaDict.containsKey(keyName)) {
@@ -178,6 +226,11 @@ public class Metainfo {
         }
     }
 
+    /** 
+     * Updates the cration date based on the metaDict.
+     * @param metaDict
+     * @throws DataFormatException
+     */
     private void updateCreationDate(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "creation date";
         if (metaDict.containsKey(keyName)) {
@@ -188,7 +241,12 @@ public class Metainfo {
             }
         }
     }
-
+    
+    /** 
+     * Updates the comment based on the metaDict.
+     * @param metaDict
+     * @throws DataFormatException
+     */
     private void updateComment(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "comment";
         if (metaDict.containsKey(keyName)) {
@@ -199,7 +257,12 @@ public class Metainfo {
             }
         }
     }
-
+    
+    /** 
+     * Updates created by based on the metaDict.
+     * @param metaDict
+     * @throws DataFormatException
+     */
     private void updateCreatedBy(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "created by";
         if (metaDict.containsKey(keyName)) {
@@ -211,6 +274,11 @@ public class Metainfo {
         }
     }
 
+    /** 
+     * Updates the encoding based on the metaDict.
+     * @param metaDict
+     * @throws DataFormatException
+     */
     private void updateEncoding(LinkedHashMap<String, Object> metaDict) throws DataFormatException {
         String keyName = "encoding";
         if (metaDict.containsKey(keyName)) {
@@ -262,8 +330,11 @@ public class Metainfo {
         return encoding;
     }
 
-    private static final byte[] HEX_ARRAY = "0123456789ABCDEF".getBytes();
-
+    /** 
+     * Converts a byte sequence to a hexadecimal representation.
+     * @param bytes
+     * @return String
+     */
     public static String bytesToHex(byte[] bytes) {
         byte[] hexChars = new byte[bytes.length * 2];
         for (int j = 0; j < bytes.length; j++) {
@@ -284,15 +355,15 @@ public class Metainfo {
 
     @Override
     public String toString() {
-        //Reimplement this
-        String fmt = "Metainfo [info->[name->%s, pieceLength->%d, Length->%d], announce->%s";
-        fmt = fmt + ", announceList->%s";
-        fmt = fmt + ", creationDate->%d";
-        fmt = fmt + ", comment->%s";
-        fmt = fmt + ", createdBy->%s";
-        fmt = fmt + ", encoding->%s";
-        fmt = fmt + "]";
-        return String.format(fmt, name, pieceLength, length, announce, announceList,
+        StringBuilder out = new StringBuilder();
+        out.append("Metainfo [info->[name->%s, pieceLength->%d, Length->%d], announce->%s");
+        out.append(", announceList->%s");
+        out.append(", creationDate->%d");
+        out.append(", comment->%s");
+        out.append(", createdBy->%s");
+        out.append(", encoding->%s");
+        out.append("]");
+        return String.format(out.toString(), name, pieceLength, length, announce, announceList,
                 creationDate, comment, createdBy, encoding);
     }
 }

@@ -1,18 +1,46 @@
 package com.slezevicius.bittorrent_client;
 
-public class FileManager extends Thread {
-    private PeerManager peerManager;
-    private TorrentManager torrentManager;
+import java.io.File;
 
-    FileManager(PeerManager peerManager, TorrentManager torrentManager) {
-        this.peerManager = peerManager;
-        this.torrentManager = torrentManager;
+public class FileManager {
+    private Torrent tor;
+    private File saveFile;
+
+    FileManager(Torrent tor, File saveFile) {
+        this.tor = tor;
+        this.saveFile = saveFile;
+        //Read the initial bitfield if the file exists
     }
 
-    @Override
-    public void run() {
-        while (true) {
+    public synchronized byte[] getBitfield() {
 
-        }
+    }
+
+    public synchronized void readFile(Request req) {
+
+    }
+
+    public synchronized void writeFile(Request req) {
+
+    }
+
+    public synchronized boolean isComplete() {
+
+    }
+
+    public synchronized int getDownloaded() {
+
+    }
+
+    public synchronized int getUploaded() {
+
+    }
+
+    public synchronized int[] getHaves() {
+
+    }
+
+    public void shutdown() {
+
     }
 }

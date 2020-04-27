@@ -1,169 +1,266 @@
 package com.slezevicius.bittorrent_client;
 
-import java.io.IOException;
 import java.net.InetAddress;
-import java.time.Clock;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
+import java.util.List;
 import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * A class for managing the peers of a particular torrent. It deals
+ * with the creation, destruction, and commanding of all the peers
+ * that belong to a particular torrent.
+ */
 public class PeerManager extends Thread {
-    private TorrentManager torrentManager;
-    private FileManager fileManager;
-    private PeerServer server;
-    private String peerId;
-    private volatile boolean newTorrent;
-    private ArrayList<String> torrents = new ArrayList<>();
-    private ArrayList<TorrentPeerInfo> peers = new ArrayList<>();
-    private HashMap<String, byte[]> bitfields;
-    private volatile HashMap<String, byte[]> frequencyArrays;
-    private HashMap<String, ArrayList<Integer>> indexArrays;
-    private HashMap<String, HashMap<Integer, byte[]>> requestedPieces; //Don't forget initialization
-    private Random rand;
-    private final int blockSize = (int) Math.pow(2, 14);
-    private volatile boolean keepRunning = true;
+    private final int BLOCKSIZE = 16384; //2^14
+    private Torrent tor;
+    private List<Peer> peers;
+
+    /**
+     * An array where the ith byte represent the frequency of the ith piece
+     */
+    private byte[] frequencyArray;
+
+    /**
+     * An array list where the ith integer contains the index of the ith rarest (lowest frequency)
+     * piece. It is a list because some of the indices can get removed whenever a piece is fully
+     * downloaded.
+     */
+    private ArrayList<Integer> rarestFirstList;
+
+    /**
+     * Hashmap where the the key is an index of a requested piece and the value
+     * has an index i if no blocks have been requested from i to pieceLength - 1 within
+     * the piece. If the piece is fully requested, the value will be -1 .
+     */
+    private HashMap<Integer, Integer> requestedPieces;
     private Logger log;
 
-    PeerManager(String peerId, int port) throws IOException  {
+    PeerManager(Torrent tor) {
         log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
         log.setLevel(Level.ALL);
-        this.peerId = peerId;
-        server = new PeerServer(this, port);
-        rand = new Random();
+        peers = new ArrayList<>();
+        this.tor = tor;
     }
 
-    public void addTorrentManager(TorrentManager torrentManager) {
-        this.torrentManager = torrentManager;
-        this.fileManager = new FileManager(this, torrentManager);
-    }
-
+    /**
+     * The main loop for the peer manager's thread. It keeps
+     * checking whether any new peers have been added by the
+     * tracker and issues out orders to the peers.
+     */
     @Override
     public void run() {
-        Instant startTime = Clock.systemUTC().instant();
+        //Add indices sorting logic
         while (true) {
             synchronized(this) {
-                if (newTorrent || !Clock.systemUTC().instant().isBefore(startTime.plusSeconds(15*60))) {
-                    updatePeers(torrentManager.getPeers());
-                    startTime = Clock.systemUTC().instant();
-                    newTorrent = false;
+                if (tor.newPeers()) {
+                    updatePeers();
+                    tor.takenNewPeers();
                 }
-            }
-            for (TorrentPeerInfo peerInfo : peers) {
-                updateOrder(peerInfo);
-            }
-            synchronized(this) {
-                if (!keepRunning) {
-                    shutdown();
+                int[] haves = tor.getHaves();
+                for (Peer peer : peers) {
+                    updateOrder(peer, haves);
                 }
             }
         }
     }
 
-    private void updatePeers(HashMap<String, HashSet<Pair<InetAddress, Integer>>> peers) {
-        for (Map.Entry<String, HashSet<Pair<InetAddress, Integer>>> peerEntry : peers.entrySet()) {
-            if (torrents.contains(peerEntry.getKey())) {
-                int peerCount = 0;
-                HashSet<Pair<InetAddress, Integer>> peerPairSet = new HashSet<>();
-                for (TorrentPeerInfo peer : this.peers) {
-                    if (peer.hexInfoHash == peerEntry.getKey()) {
-                        peerCount += 1;
-                        peerPairSet.add(peer.getPeerPair());
+    /**
+     * Updates the peer list with any new peers. Keeps the peer
+     * count to 50 as a maximum and does not allow any duplicates.
+     */
+    private void updatePeers() {
+        List<Pair<InetAddress, Integer>> newPeers = tor.getNewPeers();
+        for (Pair<InetAddress, Integer> pair : newPeers) {
+            if (peers.size() <= 50) {
+                boolean peerExists = false;
+                for (Peer peer : peers) {
+                    if (peer.getNetworkPair().equals(pair)) {
+                        peerExists = true;
+                        break;
                     }
                 }
-                for (Pair<InetAddress, Integer> pair : peerEntry.getValue()) {
-                    if (!peerPairSet.contains(pair) && peerPairSet.size() < 50) {
-                        Peer peer = new Peer(pair, this);
-                        this.peers.add(new TorrentPeerInfo(peerEntry.getKey(), peer));
-                    }
+                if (!peerExists) {
+                    Peer newPeer = new Peer(pair, this);
+                    newPeer.start();
+                    peers.add(newPeer);
                 }
+            }
+        }
+    }
+    
+    /** 
+     * Issues out new orders to every peer.
+     * @param peer
+     */
+    private void updateOrder(Peer peer, int[] haves) {
+        //Create an endagme system with cancellation
+        updateHaves(peer, haves); //Don't forget to update the rarest list
+        updateReceivedPieces(peer);
+        if (tor.isDownloading() && !peer.getAmInterested()) {
+            updateInterest(peer, true);
+            return;
+        } else if (!tor.isDownloading() && peer.getAmInterested()) {
+            updateInterest(peer, false);
+        }
+        if (tor.isUploading() && peer.getAmChocking()) {
+            updateChoke(peer, false);
+        } else if (!tor.isUploading() && !peer.getAmChocking()) {
+            updateChoke(peer, true);
+        }
+        if (peer.getPeerInterested() && !peer.getAmChocking()) {
+            updatePeerPiece(peer);
+        }
+        if (peer.getAmInterested() && !peer.getPeerChocking()) {
+            updateRequests(peer);
+        }
+    }
+
+    /**
+     * Sends an order to send a have message to the peer.
+     * @param peer
+     * @param haves: haves int[] received from the file manager
+     */
+    private void updateHaves(Peer peer, int[] haves) {
+        //Sending out any new haves that the file manager indicated
+        for (int i = 0; i < haves.length; i++) {
+            ArrayList<Object> arguments = new ArrayList<>();
+            arguments.add(haves[i]);
+            peer.addOrder(new Pair<String, ArrayList<Object>>("have", arguments));
+        }
+        //Updates the frequency array if the peer has sent any haves
+        while (true) {
+            Integer idx = peer.getPeerHaves();
+            if (idx == null) {
+                break;
+            }
+            frequencyArray[idx] += 1;
+        }
+    }
+
+    /**
+     * Updates the file manager with any new pieces that have been
+     * received from the peer.
+     * @param peer
+     */
+    private void updateReceivedPieces(Peer peer) {
+        while (true) {
+            Request piece = peer.getNewPiece();
+            if (piece != null) {
+                tor.receivedPiece(piece);
             } else {
-                torrents.add(peerEntry.getKey());
-                for (Pair<InetAddress, Integer> pair : peerEntry.getValue()) {
-                    Peer peer = new Peer(pair, this));
-                    this.peers.add(new TorrentPeerInfo(peerEntry.getKey(), peer));
-                }
+                break;
             }
         }
     }
 
-    private void updateOrder(TorrentPeerInfo peerInfo) {
-        //Make a global way of sending HAVEs
-        //Create an endgame system with cancellations
-        if (peerInfo.peer.getPeerInterested() && !peerInfo.peer.getAmChocking()) {
-            updatePiece(peerInfo);
-        }
-        if (peerInfo.peer.getAmInterested() && !peerInfo.peer.getPeerChocking()) {
-            updateRequests(peerInfo);
+    /**
+     * Orders the peer to update the status of its interest.
+     * @param peer
+     * @param interested
+     */
+    private void updateInterest(Peer peer, boolean interested) {
+        if (interested) {
+            peer.addOrder(new Pair<String, ArrayList<Object>>("interested", null));
+        } else {
+            peer.addOrder(new Pair<String, ArrayList<Object>>("not interested", null));
         }
     }
 
-    private void updatePiece(TorrentPeerInfo peerInfo) {
-        Request req = peerInfo.peer.getRequest();
+    /**
+     * Orders the peer to update the status of its choke.
+     * @param peer
+     * @param chocking
+     */
+    private void updateChoke(Peer peer, boolean chocking) {
+        if (chocking) {
+            peer.addOrder(new Pair<String, ArrayList<Object>>("choke", null));
+        } else {
+            peer.addOrder(new Pair<String, ArrayList<Object>>("unchoke", null));
+        }
+
+    }
+    
+    /** 
+     * Sends out one piece that was previously requested by a peer.
+     * @param peer
+     */
+    private void updatePeerPiece(Peer peer) {
+        Request req = peer.getRequest(); //Get the latest request
         if (req != null) {
-            int pieceLength = torrentManager.getTorrent(peerInfo.hexInfoHash).getMetainfo().getPieceLength();
-            int pieceCount = (int) Math.ceil(req.block.length/pieceLength);
-            byte[] bitfield = bitfields.get(peerInfo.hexInfoHash);
-            if (Math.ceil(bitfield.length/pieceLength) <= req.index + pieceCount) {
-                log.finer("Invalid index/length of request");
-                return;
-            }
-            int bitfieldIndex = req.index * pieceLength + req.begin;
-            for (int i = 0; i < req.block.length; i++) {
-                req.block[i] = bitfield[bitfieldIndex];
-                bitfieldIndex += 1;
-            }
+            //Check if I am willing to send a piece currently
+            tor.fillOutPiece(req); //Add error handling
             ArrayList<Object> arguments = new ArrayList<>();
             arguments.add(req);
-            peerInfo.peer.addOrder(new Pair<String, ArrayList<Object>>("piece", arguments));
+            peer.addOrder(new Pair<String, ArrayList<Object>>("piece", arguments));
         }
     }
-
-    private void updateRequests(TorrentPeerInfo peerInfo) {
-        if (peerInfo.requestCount >= 10) {
+    
+    /** 
+     * Sends a new request order to a peer.
+     * @param peer
+     */
+    private void updateRequests(Peer peer) {
+        //Make sure to document the logic properly here to make sure all pieces can be received
+        int requestCount = peer.getRequestCount();
+        if (requestCount >= 10) {
             return;
         }
-        int pieceLength = torrentManager.getTorrent(peerInfo.hexInfoHash).getMetainfo().getPieceLength();
-        ArrayList<Integer> indexArr = indexArrays.get(peerInfo.hexInfoHash);
-        while (true) {
-            int reqIndex = rand.nextInt((int) Math.ceil(indexArr.size() * 0.2));
-            if (requestedPieces.get(peerInfo.hexInfoHash).containsKey(reqIndex)) {
-                continue;
+        int pieceLength = (int) tor.getPieceLength();
+        int reqIndex = getRandomRequestIndex();
+        int begin = requestedPieces.get(reqIndex);
+        int length;
+        boolean EOF = false;
+        for (int i = 0; i < 10 - requestCount; i++) {
+            if (begin + BLOCKSIZE >= pieceLength && reqIndex + 1 == frequencyArray.length) {
+                length = pieceLength - begin;
+                EOF = true;
+            } else {
+                length = BLOCKSIZE;
             }
-            boolean EOF = false;
-            int begin = 0;
-            int length;
-            while (peerInfo.requestCount != 10) {
-                if (begin + blockSize >= pieceLength && reqIndex + 1 == frequencyArrays.get(peerInfo.hexInfoHash).length) {
-                    length = pieceLength - begin;
-                    requestedPieces.get(peerInfo.hexInfoHash).put(reqIndex, new byte[pieceLength]);
-                    EOF = true;
-                } else {
-                    length = blockSize;
-                }
-                ArrayList<Object> arguments = new ArrayList<>();
-                arguments.add(reqIndex);
-                arguments.add(begin);
-                arguments.add(length);
-                peerInfo.peer.addOrder(new Pair<String, ArrayList<Object>>("request", arguments));
-                begin += blockSize;
-                if (EOF) {
-                    return;
-                } else if (begin >= pieceLength) {
-                    begin -= pieceLength;
-                    reqIndex += 1;
+            ArrayList<Object> arguments = new ArrayList<>();
+            arguments.add(reqIndex);
+            arguments.add(begin);
+            arguments.add(length);
+            peer.addOrder(new Pair<String, ArrayList<Object>>("request", arguments));
+            begin += BLOCKSIZE;
+            if (EOF) {
+                requestedPieces.put(reqIndex, -1); //Mark the piece as fully requested
+                reqIndex = getRandomRequestIndex();
+                begin = requestedPieces.get(reqIndex);
+            } else  if (begin >= pieceLength) {
+                requestedPieces.put(reqIndex, -1);
+                begin -= pieceLength;
+                reqIndex += 1; //Make a check if this index is taken above, if yes use the above case to generate a random index
+            }
+        }
+        //Add the requested index where left off and also update the docs if some details change.
+    }
+    
+    /** 
+     * @return int
+     */
+    private int getRandomRequestIndex() {
+        Random rand = new Random();
+        int indexLimit = (int) Math.ceil(rarestFirstList.size() * 0.2); //The size of rarest pieces to choose from
+        while (true) {
+            int reqIndex = rand.nextInt(indexLimit);
+            if (requestedPieces.containsKey(reqIndex)) {
+                if (requestedPieces.get(reqIndex) != -1) {
+                    return reqIndex;
                 }
             }
         }
     }
-
+    
+    /** 
+     * Proper explanation needed.
+     * @param arr
+     * @return ArrayList<Integer>
+     */
     private ArrayList<Integer> getSortedArrayIndices(byte[] arr) {
         arr = Arrays.copyOf(arr, arr.length);
         Integer[] indices = new Integer[arr.length];
@@ -178,7 +275,7 @@ public class PeerManager extends Thread {
                 if (arr[i - 1] > arr[i]) {
                     byte tempArr = arr[i -1];
                     int tempIndex = indices[i - 1];
-                    peerInfo peerInfo                   arr[i] = tempArr;
+                    arr[i] = tempArr;
                     indices[i] = tempIndex;
                     swapped = true;
                 }
@@ -188,51 +285,68 @@ public class PeerManager extends Thread {
         return new ArrayList<Integer>(Arrays.asList(indices));
     }
 
+    /**
+     * Proper explanation needed.
+     * @param b
+     */
+    private void updateSortedArrayIndices(byte b) {
 
-    public Torrent getTorrent(byte[] infoHash) {
     }
-
-    private void updatePiece(int idx, int begin, byte[] block) {
-
-    }
-
+    
+    /** 
+     * @return String
+     */
     public String getPeerId() {
-        return peerId;
+        return tor.getPeerId();
     }
 
+    /**
+     * @return byte[]
+     */
+    public byte[] getInfoHash() {
+        return tor.getInfoHash();
+    }
+    
+    /** 
+     * @param peer
+     */
     public void addPeer(Peer peer) {
-        synchronized(peers) {
+        synchronized(this) {
             peers.add(peer);
+            peer.start();
         }
     }
-
-    public ConcurrentLinkedQueue<ArrayList<Object>> getPieceQueue() {
-        return pieceQueue;
-    }
-
+    
+    /** 
+     * @return byte[]
+     */
     public byte[] getBitfield() {
-        return bitfield;
+        return tor.getBitfield();
     }
 
-    public void receivedRequest(Peer peer, int idx, int begin, int length) {
+    /**
+     * Returns the number of bytes needed to represent a bitfield
+     * @return int
+     */
+    public int getBitfieldLength() {
+        return (int) ((tor.getPieces().length/20)/8 + 1);
     }
 
-    public void receivedCancel(Peer peer, int idx, int begin, int length) {
-    }
-
-    public FileManager getFileManager() {
-        return fileManager;
-    }
-
-    public synchronized void checkTorrent() {
-        newTorrent = true;
-    }
-
-    public synchronized void stopRunning() {
-        keepRunning = false;
-    }
-
-    private void shutdown() {
-
+    /**
+     * Graciously shuts down the peer manager by
+     * ordering all peers to shutdown and eventually
+     * shutting itself down.
+     */
+    public synchronized void shutdown() {
+        for (Peer peer : peers) {
+            peer.close();
+        }
+        for (Peer peer : peers) {
+            try {
+                peer.join();
+            } catch (InterruptedException e) {
+                log.warning("Interrupted while joining peer.");
+            }
+        }
     }
 }
