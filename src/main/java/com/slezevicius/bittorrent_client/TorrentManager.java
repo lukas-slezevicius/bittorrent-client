@@ -2,10 +2,7 @@ package com.slezevicius.bittorrent_client;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.Socket;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.logging.Level;
@@ -46,6 +43,10 @@ public class TorrentManager {
         this.peerId = peerId;
     }
 
+    TorrentManager() {
+        //For testing
+    }
+
     /**
      * Called by the client whenever there are new files to be checked.
      * Finds all the new torrent files and initializes their corresponding Torrent
@@ -76,6 +77,7 @@ public class TorrentManager {
                 tor.addPeer(peer);
             }
         }
+        peer.shutdownSockets();
     }
     
     /** 

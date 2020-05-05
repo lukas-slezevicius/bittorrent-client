@@ -41,6 +41,7 @@ public class App
 
     public static void main( String[] args )
     {
+        /*
         final Thread mainThread = Thread.currentThread();
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
@@ -102,6 +103,7 @@ public class App
             return;
         }
         log.info("Bittorrent client properly shut down");
+        */
     }
 
     static void setupLoggingConfig(String configName) {

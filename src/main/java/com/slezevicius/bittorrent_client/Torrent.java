@@ -60,6 +60,10 @@ public class Torrent {
         return tracker.getNewPeers();
     }
 
+    public void redownloadPiece(int index) {
+        peerManager.redownloadPiece(index);
+    }
+
     /**
      * @return boolean indicating whether the downloading process is complete.
      */
@@ -71,14 +75,14 @@ public class Torrent {
      * @return boolean indicating whether the user wants this torrent to be uploading.
      */
     public boolean isUploading() {
-
+        return false;
     }
 
     /**
      * @return boolean indicating whether the user want this torrent to be downloading.
      */
     public boolean isDownloading() {
-
+        return true;
     }
 
     public int[] getHaves() {
@@ -149,7 +153,7 @@ public class Torrent {
      * @param req: request object of the received piece
      */
     public void receivedPiece(Request req) {
-        fileManager.writeFile(req);
+        fileManager.receivedPiece(req);
     }
     
     /** 
@@ -158,7 +162,7 @@ public class Torrent {
      * @param req: Request object of the peer request.
      */
     public void fillOutPiece(Request req) {
-        fileManager.readFile(req);
+        fileManager.fillOutPiece(req);
     }
 
     /** 

@@ -5,9 +5,11 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.security.InvalidParameterException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
@@ -26,12 +28,40 @@ public class Peer extends Thread {
     private Socket sock;
     private DataOutputStream out;
     private DataInputStream in;
+
+    /**
+     * foundByPeerServer is true if it was initialized by the peer server, otherwise false.
+     * This influences how the main loop behaves with regards to handshakes.
+     */
     private boolean foundByPeerServer;
     private volatile byte[] peerBitfield;
+
+    /**
+     * A queue where each order is a pair of a string and an Object arraylist. The string indicates
+     * what order it is and the arraylist object is a versatile method of passing arguments for the messages.
+     */
     private volatile ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> orderQueue = new ConcurrentLinkedQueue<>();
+
+    /**
+     * The pieceQueue holds Request objects for all the received pieces. The peer manager periodically checks
+     * the queue and informs the file manager to write the piece that was received.
+     */
     private volatile ConcurrentLinkedQueue<Request> pieceQueue = new ConcurrentLinkedQueue<>();
+
+    /**
+     * The requestQueue holds Request objects for all requests that the peer (the leecher) has made. The peer
+     * manager periodically checks this list and orders the Peer to send a piece if the conditions are right.
+     */
     private volatile ConcurrentLinkedQueue<Request> requestQueue = new ConcurrentLinkedQueue<>();
+
+    /**
+     * The haveQueue holds Integer objects representing the indices that the peer has sent HAVE messages for.
+     */
     private volatile ConcurrentLinkedQueue<Integer> haveQueue = new ConcurrentLinkedQueue<>();
+
+    /**
+     * The cancelList stores int arrays of form {idx, begin, length} where each element represents a cancelled piece.
+     */
     private List<int[]> cancelList = new ArrayList<>();
     private volatile boolean amChoking = true;
     private volatile boolean amInterested = false;
@@ -42,7 +72,7 @@ public class Peer extends Thread {
     private boolean receivedFirstMessage = false;
     private boolean LTEP = false;
     private boolean DHT = false;
-    private byte[] infoHash; //The info hash received from the peer.
+    private byte[] infoHash;
     private Logger log;
 
     /**
@@ -51,14 +81,19 @@ public class Peer extends Thread {
      * @param pair
      * @param peerManager
      */
-    Peer(Pair<InetAddress, Integer> pair, PeerManager peerManager) {
+    Peer(Pair<InetAddress, Integer> pair, PeerManager peerManager) throws IOException {
+        //save the info hash from the peer manager for handshake checking
         log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
         log.setLevel(Level.ALL);
         foundByPeerServer = false;
         this.peerManager = peerManager;
+        infoHash = peerManager.getInfoHash();
         peerBitfield = new byte[peerManager.getBitfieldLength()];
         ip = pair.getLeft();
         port = pair.getRight();
+        sock = new Socket(ip, port);
+        out = new DataOutputStream(sock.getOutputStream());
+        in = new DataInputStream(sock.getInputStream());
     }
 
     /**
@@ -75,16 +110,23 @@ public class Peer extends Thread {
         log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
         log.setLevel(Level.ALL);
         foundByPeerServer = true;
-        orderQueue = new ConcurrentLinkedQueue<>();
-        pieceQueue = new ConcurrentLinkedQueue<>();
-        requestQueue = new ConcurrentLinkedQueue<>();
         ip = sock.getInetAddress();
         port = sock.getPort();
         this.sock = sock;
         out = new DataOutputStream(sock.getOutputStream());
         in = new DataInputStream(sock.getInputStream());
         receiveHandshake();
-        sendHandshake();
+    }
+
+    /**
+     * Fills out the fields that previously required a peerManager.
+     * This has to be instantly called after the Peer Socket constructor
+     * after determining which peerManager the Peer belongs to based on infoHash.
+     * @param peerManager
+     */
+    public void introducePeerManager(PeerManager peerManager) {
+        this.peerManager = peerManager;
+        peerBitfield = new byte[peerManager.getBitfieldLength()];
     }
 
     /**
@@ -95,11 +137,10 @@ public class Peer extends Thread {
     public void run() {
         try {
             if (!foundByPeerServer) {
-                sock = new Socket(ip, port);
-                out = new DataOutputStream(sock.getOutputStream());
-                in = new DataInputStream(sock.getInputStream());
                 sendHandshake();
                 receiveHandshake();
+            } else {
+                sendHandshake();
             }
             while (true) {
                 synchronized(this) {
@@ -108,6 +149,7 @@ public class Peer extends Thread {
                         return;
                     }
                 }
+                //Move the below to a separate function
                 if (in.available() > 0) {
                     readMessage();
                 }
@@ -266,7 +308,7 @@ public class Peer extends Thread {
         }
         int reserved = 8;
         for (int i = 0; i < reserved; i++) {
-            message[1 + pstr.length + i] = '0';
+            message[1 + pstr.length + i] = 0;
         }
         byte[] infoHash = peerManager.getInfoHash();
         for (int i = 0; i < infoHash.length; i++) {
@@ -290,6 +332,7 @@ public class Peer extends Thread {
      * @throws InterruptedException: If the thread is interrupted while waiting 1
      */
     private void receiveHandshake()
+        //Handle EOF
             throws IOException, DataFormatException, InterruptedException{
         Instant startTime = Clock.systemUTC().instant();
         while (true) {
@@ -323,7 +366,13 @@ public class Peer extends Thread {
         for (int i = 0; i < infoHash.length; i++) {
             infoHash[i] = in.readByte();
         }
-        this.infoHash = infoHash;
+        if (foundByPeerServer) {
+            this.infoHash = infoHash;
+        } else {
+            if (!Arrays.equals(this.infoHash, infoHash)) {
+                throw new SecurityException("InfoHash not matching");
+            }
+        }
         byte[] peerId = new byte[20];
         for (int i = 0; i < peerId.length; i++) {
             peerId[i] = in.readByte();
@@ -389,7 +438,7 @@ public class Peer extends Thread {
     private void have(ArrayList<Object> args) throws IOException {
         int idx = (int) args.get(0);
         byte[] payload = intToUInt32(idx);
-        send((byte) 6, payload);
+        send((byte) 4, payload);
     }
     
     /** 
@@ -531,7 +580,10 @@ public class Peer extends Thread {
      * @param num
      * @return byte[]
      */
-    private static byte[] intToUInt32(int num) {
+    private static byte[] intToUInt32(long num) {
+        if (num > 4294967295L) {
+            throw new InvalidParameterException("The supplied long is larger than 2^32-1");
+        }
         byte[] out = new byte[4];
         for (int i = 0; i < 4; i++) {
             int byteCount = (int) (num/Math.pow(256, 3 - i));
@@ -552,9 +604,9 @@ public class Peer extends Thread {
         for (int i = 3; i >= 0; i--) {
             idx += (in.readByte() & 0xFF) * Math.pow(256, i);
         }
-        int B = (int) (idx/8);
-        int b = idx % 8;
-        peerBitfield[B] |= (byte) ((int) Math.pow(2, b));
+        int bitfieldIndex = (int) (idx/8);
+        int bitIndex = idx % 8;
+        peerBitfield[bitfieldIndex] |= 128 >> bitIndex;
         haveQueue.add(idx);
     }
 
@@ -782,6 +834,20 @@ public class Peer extends Thread {
      */
     public synchronized void close() {
         keepRunning = false;
+    }
+
+    /**
+     * Closes all open files. Should be used only if the
+     * thread has not yet been started.
+     */
+    public void shutdownSockets() {
+        try {
+            in.close();
+            out.close();
+            sock.close();
+        } catch (IOException e) {
+            log.warning("Could not close the sockets.");
+        }
     }
 
     /**
