@@ -1,6 +1,7 @@
 package com.slezevicius.bittorrent_client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -15,6 +16,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.LogManager;
@@ -23,9 +25,7 @@ import java.util.zip.DataFormatException;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -107,24 +107,25 @@ public class PeerTestSocket extends PeerTest {
     @Order(1)
     void testConstructor() {
         try {
+            Socket sock = new Socket(ip, peerPort);
             byte[] handshakeMessage = ArrayUtils.addAll(
                 pstrlen, ArrayUtils.addAll(pstr, ArrayUtils.addAll(
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
-            Socket sock = new Socket(ip, peerPort);
             debuggerOut.write(handshakeMessage);
             peer = new Peer(sock);
             peer.introducePeerManager(peerManager);
             assertTrue(Arrays.equals(peer.getInfoHash(), infoHash));
             Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
-            Field foundByPeerServerField = cls.getField("foundByPeerServer");
+            Field foundByPeerServerField = cls.getDeclaredField("foundByPeerServer");
             foundByPeerServerField.setAccessible(true);
             boolean foundByPeerServer = (boolean) foundByPeerServerField.get(peer);
             assertTrue(foundByPeerServer);
-            Field peerBitfieldField = cls.getField("peerBitfield");
+            Field peerBitfieldField = cls.getDeclaredField("peerBitfield");
             peerBitfieldField.setAccessible(true);
             byte[] peerBitfield = (byte[]) peerBitfieldField.get(peer);
             assertEquals(peerManager.getBitfieldLength(), peerBitfield.length);
+            sock.close();
         } catch (IOException | DataFormatException | InterruptedException e) {
             e.printStackTrace();
             fail("Error was thrown; check the stack trace.");
@@ -139,22 +140,28 @@ public class PeerTestSocket extends PeerTest {
     void testSendHandshake() {
         //Tests sending handshake straight after the socket constructor
         try {
+            Socket sock = new Socket(ip, peerPort);
+            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Field socketField = cls.getDeclaredField("out");
+            socketField.setAccessible(true);
+            socketField.set(peer, new DataOutputStream( sock.getOutputStream()));
             byte[] handshakeMessage = ArrayUtils.addAll(
                 pstrlen, ArrayUtils.addAll(pstr, ArrayUtils.addAll(
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
             Method method = cls.getDeclaredMethod("sendHandshake");
             method.setAccessible(true);
             method.invoke(peer);
             byte[] resp = new byte[handshakeMessage.length];
-            debuggerIn.read(resp);
+            assertTimeout(Duration.ofMillis(200), () -> {
+                debuggerIn.read(resp);
+            });
             assertTrue(debuggerIn.available() == 0);
             assertTrue(Arrays.equals(handshakeMessage, resp));
         } catch (IOException e) {
             e.printStackTrace();
             fail(e.getMessage());
-        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | NoSuchFieldException e) {
             e.printStackTrace();
             fail(e.getMessage());
         } catch (InvocationTargetException e) {

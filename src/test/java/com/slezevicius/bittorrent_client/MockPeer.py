@@ -3,8 +3,9 @@ import select
 import sys
 import logging
 
-def main(debuggerPort, peerPort, recv_block_size=4096):
+def main(debuggerPort, peerPort, persistent=False, recv_block_size=4096):
     try:
+        logging.info(f"Started with persistent={persistent}")
         debugger = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         debugger.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         logging.info("Connecting to debugger")
@@ -40,6 +41,14 @@ def main(debuggerPort, peerPort, recv_block_size=4096):
                     collector_sockets.append(conn)
                 else:
                     data = s.recv(recv_block_size)
+                    if not data:
+                        logging.info("Peer closed the connection")
+                        collector_sockets.remove(s)
+                        potential_readers.remove(s)
+                        potential_writers.remove(s)
+                        potential_errors.remove(s)
+                        s.close()
+                        continue
                     received_from_peer = True
                     potential_writers.append(debugger)
                     logging.info(f"Received from peer: {data}")
@@ -47,11 +56,12 @@ def main(debuggerPort, peerPort, recv_block_size=4096):
                 if s in collector_sockets and data is not None and received_from_debugger:
                     logging.info(f"Sending {data} to peer and closing it")
                     s.sendall(data)
-                    collector_sockets.remove(s)
-                    potential_readers.remove(s)
-                    potential_writers.remove(s)
-                    potential_errors.remove(s)
-                    s.close()
+                    if not persistent:
+                        collector_sockets.remove(s)
+                        potential_readers.remove(s)
+                        potential_writers.remove(s)
+                        potential_errors.remove(s)
+                        s.close()
                     data = None
                     received_from_debugger = False
                 if s is debugger and data is not None and received_from_peer:
@@ -60,16 +70,19 @@ def main(debuggerPort, peerPort, recv_block_size=4096):
                     data = None
                     received_from_peer = False
                     potential_writers.remove(debugger)
-                    peer = collector_sockets[0]
-                    collector_sockets.remove(peer)
-                    potential_readers.remove(peer)
-                    potential_writers.remove(peer)
-                    potential_errors.remove(peer)
-                    peer.close()
+                    if not persistent:
+                        peer = collector_sockets[0]
+                        collector_sockets.remove(peer)
+                        potential_readers.remove(peer)
+                        potential_writers.remove(peer)
+                        potential_errors.remove(peer)
+                        peer.close()
             for s in exception_available:
                 logging.warning("Exception available in socket")
     except KeyboardInterrupt:
         logging.info("Closing the mock peer")
+        for s in collector_sockets:
+            s.close()
         debugger.close()
         collector.close()
     except Exception as e:
@@ -81,5 +94,8 @@ if __name__ == "__main__":
             format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
             datefmt='%H:%M:%S',
             level=logging.DEBUG)
-    logging.info("Starting echo server.")
-    main(int(sys.argv[1]), int(sys.argv[2]))
+    logging.info("Starting server")
+    try:
+        main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3] == "true")
+    except IndexError:
+        main(int(sys.argv[1]), int(sys.argv[2]))

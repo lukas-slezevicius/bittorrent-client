@@ -5,9 +5,6 @@ public class Pair<L, R> {
     private final R right;
 
     public Pair(L left, R right) {
-        assert left != null;
-        assert right != null;
-
         this.left = left;
         this.right = right;
     }

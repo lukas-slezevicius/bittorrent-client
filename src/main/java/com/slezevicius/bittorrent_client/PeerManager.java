@@ -114,6 +114,7 @@ public class PeerManager extends Thread {
      * @param peer
      */
     private void updateOrder(Peer peer, int[] haves) {
+        //Don't forget about sending bitfields, check in tests what's expected
         //Make sure that the peer does not accept pieces that have not been requested
         //Create an endagme system with cancellation
         updateHaves(peer, haves); //Don't forget to update the rarest list
@@ -376,7 +377,7 @@ public class PeerManager extends Thread {
         }
         for (Peer peer : peers) {
             try {
-                peer.join();
+                peer.join(); //Add the time
             } catch (InterruptedException e) {
                 log.warning("Interrupted while joining peer.");
             }

@@ -49,6 +49,7 @@ public class PeerTestPair extends PeerTest {
     final byte[] infoHash = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19};
     final byte[] peerId = {45, 88, 88, 48, 49, 48, 48, 45, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48};
     final byte[] bitfield = {123, 12, 1, 2, 3, 123, 92, 99, 88, (byte) 255, (byte) 255, (byte) 255, (byte) 255, (byte) 255, 12};
+    final byte[] piece = {1,2,3,1,2,3,1,2,3,4,5,3,1,1,2,2,2,3,1,29,12,2,3,1,2,3,1,2,3,4,4,4,4,1,4,2,2,4,2,1,2,2,11,2,41,2,1,2,11,1,12};
     InetAddress ip;
     Process dummyPeerProc;
     ServerSocket debuggerServer;
@@ -917,8 +918,7 @@ public class PeerTestPair extends PeerTest {
         try {
             int idx = 2131231212;
             int begin = 3123;
-            int length = 32769;
-            byte[] payload = new byte[12];
+            byte[] payload = new byte[8];
             payload[0] = (byte) (idx >> 24);
             payload[1] = (byte) (idx >> 16);
             payload[2] = (byte) (idx >> 8);
@@ -927,21 +927,22 @@ public class PeerTestPair extends PeerTest {
             payload[5] = (byte) (begin >> 16);
             payload[6] = (byte) (begin >> 8);
             payload[7] = (byte) begin;
-            payload[8] = (byte) (length >> 24);
-            payload[9] = (byte) (length >> 16);
-            payload[10] = (byte) (length >> 8);
-            payload[11] = (byte) length;
-            byte[] requestMessage = payload;
-            debuggerOut.write(requestMessage);
+            byte[] pieceMessage = ArrayUtils.addAll(payload, piece);
+            debuggerOut.write(pieceMessage);
             Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
-            Field requestQueueField = cls.getDeclaredField("requestQueue");
-            requestQueueField.setAccessible(true);
-            ConcurrentLinkedQueue<Request> requestQueue = (ConcurrentLinkedQueue<Request>) requestQueueField.get(peer);
-            Method method = cls.getDeclaredMethod("receiveRequest");
+            Field pieceQueueField = cls.getDeclaredField("pieceQueue");
+            pieceQueueField.setAccessible(true);
+            ConcurrentLinkedQueue<Request> pieceQueue = (ConcurrentLinkedQueue<Request>) pieceQueueField.get(peer);
+            Method method = cls.getDeclaredMethod("receivePiece", int.class);
             method.setAccessible(true);
-            assertEquals(requestQueue.size(), 0);
-            method.invoke(peer);
-            assertEquals(requestQueue.size(), 0);
+            assertEquals(pieceQueue.size(), 0);
+            method.invoke(peer, 8 + piece.length);
+            assertEquals(pieceQueue.size(), 1);
+            Request receivedPiece = peer.getNewPiece();
+            assertEquals(pieceQueue.size(), 0);
+            assertEquals(idx, receivedPiece.index);
+            assertEquals(begin, receivedPiece.begin);
+            assertTrue(Arrays.equals(receivedPiece.block, piece));
         } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | NoSuchFieldException e) {
             e.printStackTrace();
             fail("Could not set up the test");

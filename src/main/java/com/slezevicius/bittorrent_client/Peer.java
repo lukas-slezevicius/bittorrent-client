@@ -135,17 +135,22 @@ public class Peer extends Thread {
      */
     @Override
     public void run() {
+        log.info("In the peer main loop");
         try {
             if (!foundByPeerServer) {
+                log.finest("Sending handshake");
                 sendHandshake();
+                log.finest("Waiting for a handshake");
                 receiveHandshake();
             } else {
+                log.finest("Sending handshake");
                 sendHandshake();
             }
             while (true) {
                 synchronized(this) {
                     if (!keepRunning) {
-                        sock.close();
+                        log.info("Shutting down the peer");
+                        shutdownSockets();
                         return;
                     }
                 }
@@ -157,6 +162,7 @@ public class Peer extends Thread {
                 if (order == null) {
                     continue;
                 }
+                log.finest("Received order:" + order.getLeft());
                 switch (order.getLeft()) {
                     case "keep-alive":
                         break;
@@ -204,11 +210,12 @@ public class Peer extends Thread {
                         break;
                     default:
                         log.warning(String.format("%s unexpected order: %s", this.toString(), order.getLeft()));
+                        shutdownSockets();
                         return;
                 }
             }
         } catch (IOException e) {
-            log.warning(String.format("%s IOException"));
+            log.warning(String.format("%s IOException", this.toString()));
             log.log(Level.WARNING, e.getMessage(), e);
         } catch (InterruptedException e) {
             log.warning(String.format("%s got interrupted", this.toString()));
@@ -224,9 +231,7 @@ public class Peer extends Thread {
      * @param order
      */
     public void addOrder(Pair<String, ArrayList<Object>> order) {
-        synchronized(orderQueue) {
-            orderQueue.add(order);
-        }
+        orderQueue.add(order);
     }
     
     /** 
@@ -244,6 +249,7 @@ public class Peer extends Thread {
         }
         int payloadLength = length - 1;
         int id = in.readByte() & 0xFF;
+        log.finest("Received message with id: " + id);
         if (id != 5) { //Needed in order to check whether a bitfield message is first if it is received.
             receivedFirstMessage = true;
         }
@@ -291,7 +297,11 @@ public class Peer extends Thread {
                 break;
             default:
                 log.warning(String.format("%s unknown message id %d", this.toString(), id));
-                in.skipBytes(payloadLength);
+                shutdownSockets();
+                keepRunning = false;
+                orderQueue.clear();
+                return;
+                
         }
     }
     
@@ -534,7 +544,7 @@ public class Peer extends Thread {
      * @throws IOException
      */
     private void port() throws IOException {
-        throw new RuntimeException("Not implemented");
+        log.warning("Port is not implemented.");
     }
 
     /** 
