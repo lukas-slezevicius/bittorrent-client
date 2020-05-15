@@ -12,7 +12,6 @@ import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -53,6 +52,10 @@ public class PeerTestIntegration extends PeerTest {
     Socket sock;
     Peer peer;
     Logger log;
+
+    /*
+    Don't forget to test the detection of previously sent bitfield!!!
+    */
 
     @BeforeAll
     void initiAll() {

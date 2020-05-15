@@ -43,6 +43,10 @@ public class Torrent {
         peerManager = new PeerManager(this);
         log.info("Initialized torrent"); //Add proper logging
     }
+
+    Torrent() {
+        //Empty constructor for testing
+    }
     
     /** 
      * Checks whether the tracker has any new peer information.

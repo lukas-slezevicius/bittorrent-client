@@ -69,7 +69,8 @@ public class Peer extends Thread {
     private volatile boolean peerInterested = false;
     private volatile boolean keepRunning = true;
     private volatile int requestCount = 0;
-    private boolean receivedFirstMessage = false;
+    private volatile boolean receivedBitfield = false;
+    private volatile boolean receivedFirstMessage = false;
     private boolean LTEP = false;
     private boolean DHT = false;
     private byte[] infoHash;
@@ -118,6 +119,10 @@ public class Peer extends Thread {
         receiveHandshake();
     }
 
+    Peer() {
+        //Empty constructor for testing
+    }
+
     /**
      * Fills out the fields that previously required a peerManager.
      * This has to be instantly called after the Peer Socket constructor
@@ -126,7 +131,9 @@ public class Peer extends Thread {
      */
     public void introducePeerManager(PeerManager peerManager) {
         this.peerManager = peerManager;
-        peerBitfield = new byte[peerManager.getBitfieldLength()];
+        synchronized(this) {
+            peerBitfield = new byte[peerManager.getBitfieldLength()];
+        }
     }
 
     /**
@@ -146,6 +153,7 @@ public class Peer extends Thread {
                 log.finest("Sending handshake");
                 sendHandshake();
             }
+            log.info("Starting main loop of peer");
             while (true) {
                 synchronized(this) {
                     if (!keepRunning) {
@@ -251,7 +259,9 @@ public class Peer extends Thread {
         int id = in.readByte() & 0xFF;
         log.finest("Received message with id: " + id);
         if (id != 5) { //Needed in order to check whether a bitfield message is first if it is received.
-            receivedFirstMessage = true;
+            synchronized(this) {
+                receivedFirstMessage = true;
+            }
         }
         switch (id) {
             case 0:
@@ -344,9 +354,10 @@ public class Peer extends Thread {
     private void receiveHandshake()
         //Handle EOF
             throws IOException, DataFormatException, InterruptedException{
-        Instant startTime = Clock.systemUTC().instant();
+        Instant startTime = Instant.now();
+        //Instant startTime = Clock.systemUTC().instant();
         while (true) {
-            if (!Clock.systemUTC().instant().isBefore(startTime.plusSeconds(5))) {
+            if (!Instant.now().isBefore(startTime.plusSeconds(5))) {
                 throw new IOException(String.format("%s timeout peerInfofor handshake.", this));
             }
             if (in.available() > 0) {
@@ -616,7 +627,9 @@ public class Peer extends Thread {
         }
         int bitfieldIndex = (int) (idx/8);
         int bitIndex = idx % 8;
-        peerBitfield[bitfieldIndex] |= 128 >> bitIndex;
+        synchronized(this) {
+            peerBitfield[bitfieldIndex] |= 128 >> bitIndex;
+        }
         haveQueue.add(idx);
     }
 
@@ -629,15 +642,18 @@ public class Peer extends Thread {
      * @throws SecurityException: If the bitfield size is not what is expected.
      */
     private void receiveBitfield(int length) throws IOException, SecurityException {
-        if (receivedFirstMessage) {
+        if (receivedFirstMessage) { //Do I need to synchronize this?
             throw new SecurityException("The bitfield message is not the first message after the hanshake");
         }
-        receivedFirstMessage = true;
-        if (length != peerBitfield.length) {
-            throw new SecurityException("Peer bitfield does not match the expected size");
-        }
-        for (int i = 0; i < length; i++) {
-            peerBitfield[i] = in.readByte();
+        synchronized(this) {
+            receivedFirstMessage = true;
+            receivedBitfield = true;
+            if (length != peerBitfield.length) {
+                throw new SecurityException("Peer bitfield does not match the expected size");
+            }
+            for (int i = 0; i < length; i++) {
+                peerBitfield[i] = in.readByte();
+            }
         }
     }
     
@@ -689,7 +705,9 @@ public class Peer extends Thread {
         Request piece = new Request(idx, begin, block);
         pieceQueue.add(piece);
         synchronized(this) {
-            requestCount -= 1;
+            if (requestCount > 0) {
+                requestCount -= 1;
+            }
         }
     }
 
@@ -747,6 +765,10 @@ public class Peer extends Thread {
             //Implement other extensions
         }
     }
+
+    public synchronized byte[] getPeerBitfield() {
+        return peerBitfield;
+    }
     
     /** 
      * @return boolean indicating whether I am chocking the peer.
@@ -774,6 +796,14 @@ public class Peer extends Thread {
      */
     public synchronized boolean getPeerInterested() {
         return peerInterested;
+    }
+
+    public synchronized boolean hasReceivedFirstMessage() {
+        return receivedFirstMessage;
+    }
+
+    public synchronized boolean hasReceivedBitfield() {
+        return receivedBitfield;
     }
     
     /** 

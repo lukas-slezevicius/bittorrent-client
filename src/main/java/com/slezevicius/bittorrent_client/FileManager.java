@@ -30,6 +30,8 @@ public class FileManager {
     private Logger log;
 
     FileManager(Torrent tor, File saveFile) {
+        //The file manager is responsible for informing when the torrent was downloadec completely.
+        //Also take care of storing the needed metadata of the downloaded file.
         log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
         log.setLevel(Level.ALL);
         this.tor = tor;
@@ -80,6 +82,7 @@ public class FileManager {
             int bitIndex = (req.index + i)%8;
             if ((bitfield[bitfieldIndex] & (128 >> bitIndex)) == 0) {
                 log.warning("Do not have the requested pieces");
+                req.block = null;
                 return;
             }
         }
@@ -106,8 +109,8 @@ public class FileManager {
      * @param req: the Request object representing the downloaded block.
      */
     public synchronized void receivedPiece(Request req) {
-        int index = req.index;
-        int begin = req.begin;
+        Integer index = req.index;
+        Integer begin = req.begin;
         int length = req.block.length;
         while (true) {
             int bitfieldIndex = index/8;
@@ -117,8 +120,8 @@ public class FileManager {
             if (!gotPiece && !incompletePieces.containsKey(index)) {
                 incompletePieces.put(index, new byte[(int) tor.getPieceLength()]);
                 receivedBlockBytes.put(index, 0);
-                piece = incompletePieces.get(index);
             }
+            piece = incompletePieces.get(index);
             int totalBytesSoFar = receivedBlockBytes.get(index);
             if (gotPiece || begin + length >= piece.length) {
                 if (!gotPiece) {
@@ -136,22 +139,27 @@ public class FileManager {
                             haves.push(index);
                         } catch (IOException e) {
                             log.warning("Cannot write to file at piece index: " + index);
+                            //Should I reomove the objects here too?
                         }
                     } else if (pieceIsFull(index)) {
                         repeatPiece(index);
                     }
                 }
+                req.block = Arrays.copyOfRange(req.block, piece.length - begin, req.block.length);
                 length -= (piece.length - begin);
-                begin = 0;
                 index += 1;
-                if (length <= 0 || index == tor.getPieces().length) {
+                begin = 0;
+                if (length == 0 || index + 1 == tor.getPieces().length) {
+                    return;
+                } else if (length < 0) {
+                    log.warning("Length is <0");
                     return;
                 }
             } else {
                 if (!gotPiece) {
                     receivedBlockBytes.put(index, totalBytesSoFar + length);
                     for (int i = 0; i < length; i++) {
-                        piece[i + begin] = piece[i];
+                        piece[i + begin] = req.block[i];
                     }
                 } else {
                     log.info("Received a block for a piece which has already been downloaded.");
@@ -167,9 +175,9 @@ public class FileManager {
      * @param index
      * @return boolean
      */
-    private boolean pieceIsFull(int index) {
+    private boolean pieceIsFull(Integer index) {
         //Assuming that the peer manager makes sure there are no duplicates or overlaps
-        if (receivedBlockBytes.get(index) == tor.getPieceLength()) {
+        if (receivedBlockBytes.get(index) >= tor.getPieceLength()) {
             return true;
         }
         return false;
@@ -181,12 +189,12 @@ public class FileManager {
      * @param index
      * @return boolean
      */
-    private boolean pieceIsCorrect(int index) {
+    private boolean pieceIsCorrect(Integer index) {
         try {
             byte[] piece = incompletePieces.get(index);
             MessageDigest md = MessageDigest.getInstance("SHA-1");
             byte[] pieceHash = md.digest(piece);
-            byte[] infoHash = Arrays.copyOfRange(tor.getPieces(), index*20, index*21);
+            byte[] infoHash = Arrays.copyOfRange(tor.getPieces(), index*20, (index+1)*20);
             return Arrays.equals(pieceHash, infoHash);
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-1 algorithm was not found");
@@ -207,7 +215,7 @@ public class FileManager {
      * remove their incompletePieces and receivedBlockBytes entries.
      * @param index
      */
-    private void repeatPiece(int index) {
+    private void repeatPiece(Integer index) {
         incompletePieces.remove(index);
         receivedBlockBytes.remove(index);
         tor.redownloadPiece(index);

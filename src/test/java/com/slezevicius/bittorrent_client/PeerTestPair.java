@@ -788,6 +788,7 @@ public class PeerTestPair extends PeerTest {
             method.setAccessible(true);
             method.invoke(peer, bitfield.length);
             assertTrue(Arrays.equals(bitfield, peerBitfield));
+            assertTrue(peer.hasReceivedBitfield());
         } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | NoSuchFieldException e) {
             e.printStackTrace();
             fail("Could not set up the test");
