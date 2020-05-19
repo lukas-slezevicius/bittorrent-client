@@ -6,15 +6,15 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.security.InvalidParameterException;
-import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.zip.DataFormatException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Peer class that represents a single connection with one peer
@@ -83,9 +83,7 @@ public class Peer extends Thread {
      * @param peerManager
      */
     Peer(Pair<InetAddress, Integer> pair, PeerManager peerManager) throws IOException {
-        //save the info hash from the peer manager for handshake checking
-        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(Peer.class);
         foundByPeerServer = false;
         this.peerManager = peerManager;
         infoHash = peerManager.getInfoHash();
@@ -95,6 +93,7 @@ public class Peer extends Thread {
         sock = new Socket(ip, port);
         out = new DataOutputStream(sock.getOutputStream());
         in = new DataInputStream(sock.getInputStream());
+        log.trace("%s initialized", toString());
     }
 
     /**
@@ -108,8 +107,7 @@ public class Peer extends Thread {
      */
     Peer(Socket sock)
             throws IOException, DataFormatException, InterruptedException {
-        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(Peer.class);
         foundByPeerServer = true;
         ip = sock.getInetAddress();
         port = sock.getPort();
@@ -117,6 +115,7 @@ public class Peer extends Thread {
         out = new DataOutputStream(sock.getOutputStream());
         in = new DataInputStream(sock.getInputStream());
         receiveHandshake();
+        log.trace("Peer[ip=%s, port=%d] initialized through a socket", ip.toString(), port);
     }
 
     Peer() {
@@ -134,6 +133,7 @@ public class Peer extends Thread {
         synchronized(this) {
             peerBitfield = new byte[peerManager.getBitfieldLength()];
         }
+        log.trace("%s added peer manager", toString());
     }
 
     /**
@@ -142,22 +142,20 @@ public class Peer extends Thread {
      */
     @Override
     public void run() {
-        log.info("In the peer main loop");
+        log.trace("%s in the peer main loop", toString());
         try {
             if (!foundByPeerServer) {
-                log.finest("Sending handshake");
                 sendHandshake();
-                log.finest("Waiting for a handshake");
                 receiveHandshake();
             } else {
-                log.finest("Sending handshake");
                 sendHandshake();
             }
-            log.info("Starting main loop of peer");
+            log.trace("%s starting main loop", toString());
             while (true) {
+                Thread.sleep(50);
                 synchronized(this) {
                     if (!keepRunning) {
-                        log.info("Shutting down the peer");
+                        log.info("%s shutting down", toString());
                         shutdownSockets();
                         return;
                     }
@@ -170,7 +168,7 @@ public class Peer extends Thread {
                 if (order == null) {
                     continue;
                 }
-                log.finest("Received order:" + order.getLeft());
+                log.debug("%s Received order: %s", toString(), order.getLeft());
                 switch (order.getLeft()) {
                     case "keep-alive":
                         break;
@@ -217,21 +215,15 @@ public class Peer extends Thread {
                         port();
                         break;
                     default:
-                        log.warning(String.format("%s unexpected order: %s", this.toString(), order.getLeft()));
+                        log.fatal("%s unexpected order: %s", toString(), order.getLeft());
                         shutdownSockets();
                         return;
                 }
             }
-        } catch (IOException e) {
-            log.warning(String.format("%s IOException", this.toString()));
-            log.log(Level.WARNING, e.getMessage(), e);
-        } catch (InterruptedException e) {
-            log.warning(String.format("%s got interrupted", this.toString()));
-            log.log(Level.WARNING, e.getMessage(), e);
-        } catch (SecurityException e) {
-            log.log(Level.WARNING, e.getMessage(), e);
-        } catch (DataFormatException e) {
-            log.log(Level.WARNING, e.getMessage(), e);
+        } catch (IOException | InterruptedException | DataFormatException e) {
+            shutdownSockets();
+            log.error("%s received an error", toString());
+            log.error(e.getMessage(), e);
         }
     }
     
@@ -257,7 +249,7 @@ public class Peer extends Thread {
         }
         int payloadLength = length - 1;
         int id = in.readByte() & 0xFF;
-        log.finest("Received message with id: " + id);
+        log.debug("%s received message with id: %d", toString(), id);
         if (id != 5) { //Needed in order to check whether a bitfield message is first if it is received.
             synchronized(this) {
                 receivedFirstMessage = true;
@@ -306,7 +298,7 @@ public class Peer extends Thread {
                 receiveExtension(payloadLength);
                 break;
             default:
-                log.warning(String.format("%s unknown message id %d", this.toString(), id));
+                log.fatal("%s unknown message id %d", toString(), id);
                 shutdownSockets();
                 keepRunning = false;
                 orderQueue.clear();
@@ -320,6 +312,7 @@ public class Peer extends Thread {
      * @throws IOException
      */
     private void sendHandshake() throws IOException {
+        log.debug("%s sending handshake", toString());
         byte[] message = new byte[68];
         message[0] = 19;
         byte[] pstr = "BitTorrent protocol".getBytes();
@@ -352,13 +345,13 @@ public class Peer extends Thread {
      * @throws InterruptedException: If the thread is interrupted while waiting 1
      */
     private void receiveHandshake()
-        //Handle EOF
             throws IOException, DataFormatException, InterruptedException{
+        //Handle EOF
+        log.debug("%s waiting for handshake", toString());
         Instant startTime = Instant.now();
-        //Instant startTime = Clock.systemUTC().instant();
         while (true) {
             if (!Instant.now().isBefore(startTime.plusSeconds(5))) {
-                throw new IOException(String.format("%s timeout peerInfofor handshake.", this));
+                throw new IOException(String.format("%s timeout peerInfofor handshake.", toString()));
             }
             if (in.available() > 0) {
                 break;
@@ -367,7 +360,7 @@ public class Peer extends Thread {
         }
         byte pstrlen = in.readByte();
         if (pstrlen != 19) {
-            log.warning(String.format("%s received pstrlen is not 19", this));
+            log.debug("%s received pstrlen is not 19", toString());
             throw new DataFormatException("pstrlen is " + pstrlen);
         }
         StringBuilder pstr = new StringBuilder();
@@ -375,7 +368,7 @@ public class Peer extends Thread {
             pstr.append((char) in.readByte());
         }
         if (!pstr.toString().equals("BitTorrent protocol")) {
-            log.warning(String.format("%s received pst is not as expected", this));
+            log.debug("%s received pst is not as expected", this);
             throw new DataFormatException("pstr is " + pstr);
         }
         byte[] reserved = new byte[8];
@@ -398,6 +391,7 @@ public class Peer extends Thread {
         for (int i = 0; i < peerId.length; i++) {
             peerId[i] = in.readByte();
         }
+        log.debug("%s received handshake", toString());
     }
     
     /** 
@@ -407,9 +401,11 @@ public class Peer extends Thread {
      */
     private void parseReserved(byte[] reserved) {
         if ((reserved[5] & 0x10) == 0x10) {
+            log.debug("%s LTEP enabled", toString());
             LTEP = true;
         }
         if ((reserved[7] & 0x01) == 0x01) {
+            log.debug("%s DHT enabled", toString());
             DHT = true;
         }
     }
@@ -555,7 +551,7 @@ public class Peer extends Thread {
      * @throws IOException
      */
     private void port() throws IOException {
-        log.warning("Port is not implemented.");
+        log.warn("%s port is not implemented.", toString());
     }
 
     /** 
@@ -676,7 +672,7 @@ public class Peer extends Thread {
             length += (in.readByte() & 0xFF) * Math.pow(256, i);
         }
         if (length > Math.pow(2, 15)) {
-            log.finer("The requested piece size was too big; request dropped");
+            log.debug("%s the requested piece size was too big; request dropped", toString());
             return;
         }
         requestQueue.add(new Request(idx, begin, length));
@@ -886,7 +882,7 @@ public class Peer extends Thread {
             out.close();
             sock.close();
         } catch (IOException e) {
-            log.warning("Could not close the sockets.");
+            log.warn("%s could not close the sockets.", toString());
         }
     }
 
@@ -933,6 +929,6 @@ public class Peer extends Thread {
      */
     @Override
     public String toString() {
-        return String.format("Peer[ip=%s, port=%s]", ip.toString(), String.valueOf(port));
+        return String.format("Peer[name=%s, ip=%s, port=%s]", peerManager.getFileName(), ip.toString(), String.valueOf(port));
     }
 }

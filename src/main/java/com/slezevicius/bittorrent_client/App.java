@@ -1,47 +1,18 @@
 package com.slezevicius.bittorrent_client;
 
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.logging.Level;
-import java.util.logging.LogManager;
-import java.util.logging.Logger;
-import java.util.zip.DataFormatException;
+
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+
 
 public class App 
 {
     public static volatile boolean keepRunning = true;
 
-    static {
-        System.setProperty("java.util.logging.manager", MyLogManager.class.getName());
-    }
-
-    public static class MyLogManager extends LogManager {
-        static MyLogManager instance;
-
-        public MyLogManager() {
-            instance = this;
-        }
-
-        @Override
-        public void reset() {
-
-        }
-
-        private void reset0() {
-            super.reset();
-        }
-
-        public static void resetFinally() {
-            instance.reset0();
-        }
-
-
-    }
-
-    public static void main( String[] args )
+    public static void main( String[] args)
     {
-        /*
+        final Logger log = LogManager.getFormatterLogger(App.class);
         final Thread mainThread = Thread.currentThread();
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
@@ -49,72 +20,46 @@ public class App
                 try {
                     mainThread.join();
                 } catch (InterruptedException e) {
+                    log.warn("Interrupted while joining main thread");
                 } finally {
-                    MyLogManager.resetFinally();
+                    log.info("Shutting down logger");
+                    LogManager.shutdown();
                 }
             }
         });
 
-        Logger log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        setupLoggingConfig("/log.properties");
-
         log.info("Starting bittorrent client");
         int port = 6881;
         String peerId = "-XX0100-000000000000";
-        TorrentManager torrentManager = new TorrentManager();
-        PeerManager peerManager;
-        try {
-            peerManager = new PeerManager(peerId, port);
-        } catch (IOException e) {
-            log.log(Level.WARNING, e.getMessage(), e);
-            return;
-        }
-        torrentManager.addPeerManager(peerManager);
-        peerManager.addTorrentManager(torrentManager);
-        peerManager.start();
         String path = "/home/lukas/Programming/Projects/bittorrent-client/";
-        String file = "ubuntu-19.10-desktop-amd64.iso.torrent";
-        Torrent tor;
+        String torrentPath = path + "Torrents";
+        String downloadPath = path + "Downloaded";
+        TorrentManager torrentManager;
         try {
-            tor = new Torrent(path + file, "-XX0100-000000000000", 6881);
+            log.trace("Starting the torrent manager");
+            torrentManager = new TorrentManager(torrentPath, downloadPath, port, peerId);
         } catch (IOException e) {
-            log.log(Level.SEVERE, e.getMessage(), e);
-            return;
-        } catch (DataFormatException e) {
-            log.log(Level.SEVERE, e.getMessage(), e);
-            return;
-        } catch (URISyntaxException e) {
-            log.log(Level.SEVERE, e.getMessage(), e);
+            log.error("IOException while initializing torrent manager", e);
             return;
         }
-        tor.start();
+        torrentManager.updateFiles();
 
+        log.trace("Starting the client main loop");
         while (keepRunning) {
+            //Keep checking for new file additions here
             try {
                 Thread.sleep(50);
-            } catch (InterruptedException e) {}
+            } catch (InterruptedException e) {
+                log.error("Client was interrupted while in the main loop.", e);
+            }
         }
-        log.info("Shutting down bittorrent client");
-        tor.stopRunning();
+        log.trace("Starting to shut down the bittorrent client");
         try {
-            tor.join();
+            torrentManager.shutdown();
         } catch (InterruptedException e) {
-            log.warning("Could not shut down bittorrent client properly");
+            log.warn("Could not shut down bittorrent client properly");
             return;
         }
-        log.info("Bittorrent client properly shut down");
-        */
-    }
-
-    static void setupLoggingConfig(String configName) {
-        try {
-            String configPath = System.getProperty("user.dir") + configName;
-            FileInputStream configFile = new FileInputStream(configPath);
-            LogManager.getLogManager().readConfiguration(configFile);
-            configFile.close();
-        } catch (IOException e) {
-            System.out.println("WARNING: Could not open configuration file");
-            System.out.println("WARNING: Logging not configured (console output only)");
-        }
+        log.info("Bittorrent client has been properly shut down");
     }
 }

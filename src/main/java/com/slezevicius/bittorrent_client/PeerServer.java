@@ -3,10 +3,10 @@ package com.slezevicius.bittorrent_client;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.zip.DataFormatException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * PeerServer continously listens for new incoming connections from other peers.
@@ -24,11 +24,11 @@ public class PeerServer extends Thread {
      * @throws IOException: whenever a new server socket cannot be created.
      */
     PeerServer(TorrentManager torrentManager) throws IOException {
-        this.log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        this.log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(PeerServer.class);
         this.server = new ServerSocket(torrentManager.getPort());
         this.torrentManager = torrentManager;
         this.run = true;
+        log.trace("PeerServer initialized");
     }
 
     /**
@@ -38,24 +38,32 @@ public class PeerServer extends Thread {
      */
     @Override
     public void run() {
+        log.trace("PeerServer in the main loop");
         while (true) {
             try {
+                synchronized(this) {
+                    if (!run) {
+                        log.trace("Shutting down peer server from run");
+                        server.close();
+                        return;
+                    }
+                }
                 Socket sock = server.accept();
                 try {
                     Peer peer = new Peer(sock);
                     torrentManager.receivedPeer(peer);
                 } catch (IOException | DataFormatException | InterruptedException e) {
-                    log.log(Level.FINE, e.getMessage(), e);
+                    log.error(e.getMessage(), e);
                 }
-            } catch (SecurityException | IOException e) {
-                log.log(Level.WARNING, e.getMessage(), e);
-                break;
-            }
-            synchronized(this) {
-                if (!run) {
-                    log.info("Shutting down peer server from run");
-                    return;
+            } catch (IOException e) {
+                synchronized(this) {
+                    if (!run) {
+                        log.trace("Server socket is closed");
+                        return;
+                    }
                 }
+                log.error(e.getMessage(), e);
+                return;
             }
         }
     }
@@ -64,12 +72,12 @@ public class PeerServer extends Thread {
      * Graciously shuts down the peer server.
      */
     public synchronized void shutdown() {
-        log.info("Shutting down peer server");
-        run = false; //If the peer is not listening, it could break earlier
+        log.trace("Shutting down peer server");
         try {
             server.close();
         } catch (IOException e) {
-            log.log(Level.WARNING, e.getMessage(), e);
+            log.error(e.getMessage(), e);
         }
+        run = false;
     }
 }

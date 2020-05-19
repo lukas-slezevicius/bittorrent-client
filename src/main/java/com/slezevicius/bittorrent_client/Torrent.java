@@ -4,10 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URISyntaxException;
+import java.nio.file.Paths;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.zip.DataFormatException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * The class that deals with each particular torrent file. It controls
@@ -33,15 +35,15 @@ public class Torrent {
      */
     Torrent(TorrentManager torrentManager, File torrentFile, File saveFile)
             throws DataFormatException, URISyntaxException , IOException {
-        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(Torrent.class);
         this.torrentManager = torrentManager;
         metainfo = new Metainfo(torrentFile);
+        fileManager = new FileManager(this, Paths.get(saveFile.toString(), metainfo.getName()).toFile());
         tracker = new Tracker(metainfo, this);
         tracker.start();
-        fileManager = new FileManager(this, saveFile);
         peerManager = new PeerManager(this);
-        log.info("Initialized torrent"); //Add proper logging
+        peerManager.start();
+        log.trace("%s initialized", toString());
     }
 
     Torrent() {
@@ -195,6 +197,10 @@ public class Torrent {
     public void addPeer(Peer peer) {
         peerManager.addPeer(peer);
     }
+
+    public String getName() {
+        return metainfo.getName();
+    }
     
     /** 
      * Graciously shuts down the Torrent object. It also orders
@@ -202,11 +208,16 @@ public class Torrent {
      * @throws InterruptedException
      */
     public void shutdown() throws InterruptedException {
-        log.info("Shutting down torrent " + getHexInfoHash());
+        log.trace("shutting down %s", toString());
         tracker.shutdown();
         peerManager.shutdown();
         fileManager.shutdown();
         tracker.join();
         peerManager.join();
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Torrent[name=%s]", getName());
     }
 }

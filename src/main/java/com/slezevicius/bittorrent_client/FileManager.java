@@ -10,8 +10,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Stack;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * A class for managing the reading and writing of downloading torrented
@@ -20,6 +21,7 @@ import java.util.logging.Logger;
 public class FileManager {
     private Torrent tor;
     private RandomAccessFile accessFile;
+    private File saveFile;
     private byte[] bitfield;
     private Stack<Integer> haves;
     private Map<Integer, byte[]> incompletePieces;
@@ -32,14 +34,15 @@ public class FileManager {
     FileManager(Torrent tor, File saveFile) {
         //The file manager is responsible for informing when the torrent was downloadec completely.
         //Also take care of storing the needed metadata of the downloaded file.
-        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(FileManager.class);
         this.tor = tor;
+        this.saveFile = saveFile;
         receivedBlockBytes = new HashMap<>();
         incompletePieces = new HashMap<>();
         if (filePreviouslyDownloaded()) {
             updateBitfield();
             checkIfComplete();
+            //send a bunch of haves to the peer manager
         }
         try {
             accessFile = new RandomAccessFile(saveFile, "rw");
@@ -50,6 +53,7 @@ public class FileManager {
         downloaded = 0;
         complete = false;
         bitfield = new byte[tor.getBitfieldLength()];
+        log.trace("%s initialized", toString());
     }
 
     /**
@@ -81,7 +85,7 @@ public class FileManager {
             int bitfieldIndex = (req.index + i)/8;
             int bitIndex = (req.index + i)%8;
             if ((bitfield[bitfieldIndex] & (128 >> bitIndex)) == 0) {
-                log.warning("Do not have the requested pieces");
+                log.debug("%s does not have the requested piece at index %d", toString(), req.index);
                 req.block = null;
                 return;
             }
@@ -91,7 +95,8 @@ public class FileManager {
             accessFile.read(req.block);
         } catch (IOException e) {
             req.block = null;
-            log.warning("Could not read the file");
+            log.error("%s received an IOException", toString());
+            log.error(e.getMessage(), e);
         }
     }
 
@@ -112,12 +117,14 @@ public class FileManager {
         Integer index = req.index;
         Integer begin = req.begin;
         int length = req.block.length;
+        log.debug("%s received a piece with index %d, begin %d, length %d",
+            toString(), index.intValue(), begin.intValue(), length);
         while (true) {
             int bitfieldIndex = index/8;
             int bitIndex = index%8;
             boolean gotPiece = (bitfield[bitfieldIndex] & (128 >> bitIndex)) != 0;
             byte[] piece = null;
-            if (!gotPiece && !incompletePieces.containsKey(index)) {
+            if (!gotPiece && !incompletePieces.containsKey(index)) { //What's up with the gotPiece logic?
                 incompletePieces.put(index, new byte[(int) tor.getPieceLength()]);
                 receivedBlockBytes.put(index, 0);
             }
@@ -131,6 +138,7 @@ public class FileManager {
                     }
                     if (pieceIsFull(index) && pieceIsCorrect(index)) {
                         try {
+                            log.debug("%s writing piece at index %d", toString(), index.intValue());
                             writeToFile(index);
                             bitfield[bitfieldIndex] |= 128 >> bitIndex;
                             incompletePieces.remove(index);
@@ -138,10 +146,12 @@ public class FileManager {
                             downloaded += piece.length;
                             haves.push(index);
                         } catch (IOException e) {
-                            log.warning("Cannot write to file at piece index: " + index);
+                            log.error("%s cannot write to file at inded %d", toString(), index);
+                            log.error(e.getMessage(), e);
                             //Should I reomove the objects here too?
                         }
                     } else if (pieceIsFull(index)) {
+                        log.debug("%s piece at index %d is invalid; repeating the piece", toString(), index.intValue());
                         repeatPiece(index);
                     }
                 }
@@ -152,7 +162,8 @@ public class FileManager {
                 if (length == 0 || index + 1 == tor.getPieces().length) {
                     return;
                 } else if (length < 0) {
-                    log.warning("Length is <0");
+                    log.fatal("%s the length is < 0. Request index %d, begin %d, length %d",
+                        toString(), index.intValue(), begin.intValue(), length);
                     return;
                 }
             } else {
@@ -162,7 +173,7 @@ public class FileManager {
                         piece[i + begin] = req.block[i];
                     }
                 } else {
-                    log.info("Received a block for a piece which has already been downloaded.");
+                    log.debug("%s received a block for a piece which has already been downloaded.", toString());
                 }
                 return;
             }
@@ -271,8 +282,14 @@ public class FileManager {
     public synchronized void shutdown() {
         try {
             accessFile.close();
+            log.trace("%s shut down", toString());
         } catch (IOException e) {
-            log.warning("Could not close the file manager file");
+            log.error(e.getMessage(), e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return String.format("FileManager[name=%s, save=%s]", tor.getName(), saveFile.getAbsolutePath());
     }
 }

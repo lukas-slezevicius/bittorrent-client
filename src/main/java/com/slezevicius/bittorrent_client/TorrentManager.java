@@ -5,9 +5,10 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.zip.DataFormatException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * The manager of all the currently active torrents. It detects newly added torrent files
@@ -34,13 +35,16 @@ public class TorrentManager {
      * @throws IOException: thrown if the peer server could not start up.
      */
     TorrentManager(String torrentPath, String savePath, int port, String peerId) throws IOException {
-        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(TorrentManager.class);
+        log.trace("Initializing the torrent manager");
         torrentDir = new File(torrentPath);
         saveDir = new File(savePath);
         peerServer = new PeerServer(this);
+        peerServer.start();
+        torrents = new HashMap<>();
         this.port = port;
         this.peerId = peerId;
+        log.trace("Finished initializing the torrent manager");
     }
 
     TorrentManager() {
@@ -53,14 +57,15 @@ public class TorrentManager {
      * instances.
      */
     public void updateFiles() {
+        log.trace("Updating files for torrent manager");
         for (File file : torrentDir.listFiles()) {
-            if (file.isFile() && !torrents.containsKey(file)) {
+            if (file.isFile() && !torrents.containsKey(file)) { //Check if it's a torrent file too
                 try {
                     Torrent tor = new Torrent(this, file, saveDir);
                     torrents.put(file, tor);
                     log.info("Added new torrent " + file.getName());
                 } catch (DataFormatException | URISyntaxException | IOException e) {
-                    log.log(Level.INFO, e.getMessage(), e);
+                    log.error("Received error while creating a new torrent", e);
                 }
             }
         }
@@ -72,11 +77,15 @@ public class TorrentManager {
      * @param peer
      */
     public void receivedPeer(Peer peer) {
+        log.debug("Received a new %s from the peer server", peer.toString());
         for (Torrent tor : torrents.values()) {
             if (Arrays.equals(tor.getInfoHash(), peer.getInfoHash())) {
                 tor.addPeer(peer);
+                return;
             }
         }
+        log.warn("Could not find a matching torrent for the peer %s with infohash %s",
+            peer.toString(), Metainfo.bytesToHex(peer.getInfoHash()));
         peer.shutdownSockets();
     }
     
@@ -101,11 +110,12 @@ public class TorrentManager {
      * for the peer server to shut.
      */
     public void shutdown() throws InterruptedException {
-        log.info("Shutting down torrent manager");
+        log.trace("Shutting down torrent manager");
         peerServer.shutdown();
         for (Torrent tor : torrents.values()) {
             tor.shutdown();
         }
         peerServer.join();
+        log.trace("Successfully shut down the torrent manager");
     }
 }

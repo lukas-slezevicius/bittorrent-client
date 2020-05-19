@@ -10,8 +10,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.zip.DataFormatException;
 
 import org.apache.http.HttpEntity;
@@ -20,6 +18,8 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Tracker object that deals with the bittorrent tracker for
@@ -40,11 +40,10 @@ public class Tracker extends Thread {
     private Logger log;
 
     Tracker(Metainfo metainfo, Torrent torrent) throws URISyntaxException, DataFormatException {
-        log  = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(Tracker.class);
         this.metainfo = metainfo;
         this.torrent = torrent;
-        log.finest(String.format("%s initialized", this.toString()));
+        log.trace("Initialized %s", toString());
     }
 
     /**
@@ -53,45 +52,43 @@ public class Tracker extends Thread {
      */
     @Override
     public void run() {
+        log.trace("%s in the main loop", toString());
         try {
             send("started");
             synchronized(this) {
                 receivedNewPeers = true;
             }
-            log.finest(String.format("%s sent started", this.toString()));
-            log.finest("Gonna sleep for " + interval);
+            log.debug("%s sent started", toString());
+            log.debug("%s will sleep for %d seconds", toString(), interval);
             Thread.sleep(interval * 1000);
             while (keepRunning) {
                 send("");
+                log.debug("%s sent update", toString());
                 synchronized(this) {
                     receivedNewPeers = true;
                 }
+                log.debug("%s will sleep for %d seconds", toString(), interval);
                 Thread.sleep(interval * 1000);
-                log.finest(String.format("%s sent update"));
             }
-        } catch (IOException e) {
-            log.log(Level.WARNING, e.getMessage(), e);
-        } catch (URISyntaxException e) {
-            log.log(Level.WARNING, e.getMessage(), e);
-        } catch (DataFormatException e) {
-            log.log(Level.WARNING, e.getMessage(), e);
+        } catch (IOException | URISyntaxException | DataFormatException e) {
+            log.error(e.getMessage(), e);
         } catch (InterruptedException e) {
+            log.trace("%s interrupted", toString());
             if (keepRunning) {
-                log.warning(String.format("%s: The thread was interrupted", this.toString()));
+                log.error("%s interrupted", toString());
                 return;
             }
         }
         try {
             if (torrent.isComplete()) {
-                send("completed"); //Make sure that this receives a response
-                log.finest(String.format("%s sent completed", this.toString()));
+                send("completed");
+                log.debug("%s sent completed", toString());
             } else {
                 send("stopped");
-                log.finest(String.format("%s sent stopped", this.toString()));
+                log.debug("%s sent stopped", toString());
             }
-        } catch (Exception e) {
-            log.warning(String.format("%s: Could not send the final message to the tracker", this.toString()));
-            log.log(Level.WARNING, e.getMessage(), e);
+        } catch (IOException | URISyntaxException | DataFormatException e) {
+            log.error("%s got error while sending final message", toString());
         }
     }
     
@@ -121,45 +118,45 @@ public class Tracker extends Thread {
             if (responseDict.containsKey("failure reason")) {
                 if (responseDict.get("failure reason") instanceof byte[]) {
                     String failure = new String((byte[]) responseDict.get("failure reason"));
-                    throw new DataFormatException(String.format("%s failure: %s", this.toString(), failure));
+                    throw new DataFormatException(String.format("%s failure: %s", toString(), failure));
                 } else {
-                    throw new DataFormatException(String.format("%s failure reason type is not byte string", this.toString()));
+                    throw new DataFormatException(String.format("%s failure reason type is not byte string", toString()));
                 }
             }
             if (responseDict.containsKey("warning message")) {
                 if (responseDict.get("warning message") instanceof byte[]) {
                     String warning = new String((byte[]) responseDict.get("warning message"));
-                    throw new DataFormatException(String.format("%s warning: %s", this.toString(), warning));
+                    throw new DataFormatException(String.format("%s warning: %s", toString(), warning));
                 } else {
-                    log.warning(String.format("%s: warning message type is not byte string"));
+                    log.warn("%s: warning message type is not byte string", toString());
                 }
             }
             if (responseDict.containsKey("interval")) {
                 if (responseDict.get("interval") instanceof Long) {
                     interval = (long) responseDict.get("interval");
                 } else {
-                    throw new DataFormatException(String.format("%s interval value is not of type int", this.toString()));
+                    throw new DataFormatException(String.format("%s interval value is not of type int", toString()));
                 }
             } else {
-                throw new DataFormatException(String.format("%s interval key not in the dict", this.toString()));
+                throw new DataFormatException(String.format("%s interval key not in the dict", toString()));
             }
             if (responseDict.containsKey("complete")) {
                 if (responseDict.get("complete") instanceof Long) {
                     complete = (long) responseDict.get("complete");
                 } else {
-                    throw new DataFormatException(String.format("%s complete value is not of type int", this.toString()));
+                    throw new DataFormatException(String.format("%s complete value is not of type int", toString()));
                 }
             } else {
-                throw new DataFormatException(String.format("%s complete key not in the dict", this.toString()));
+                throw new DataFormatException(String.format("%s complete key not in the dict", toString()));
             }
             if (responseDict.containsKey("incomplete")) {
                 if (responseDict.get("incomplete") instanceof Long) {
                     incomplete = (long) responseDict.get("incomplete");
                 } else {
-                    throw new DataFormatException(String.format("%s incomplete value is not of type int", this.toString()));
+                    throw new DataFormatException(String.format("%s incomplete value is not of type int", toString()));
                 }
             } else {
-                throw new DataFormatException(String.format("%s incomplete key not in the dict", this.toString()));
+                throw new DataFormatException(String.format("%s incomplete key not in the dict", toString()));
             }
             if (responseDict.containsKey("peers")) {
                 if (responseDict.get("peers") instanceof ArrayList) {
@@ -173,13 +170,13 @@ public class Tracker extends Thread {
                         updatePeers((byte[]) responseDict.get("peers"));
                     }
                 } else {
-                    throw new DataFormatException(String.format("%s peers is of an invalid type", this.toString()));
+                    throw new DataFormatException(String.format("%s peers is of an invalid type", toString()));
                 }
             } else {
-                throw new DataFormatException(String.format("%s peers key not in the dict", this.toString()));
+                throw new DataFormatException(String.format("%s peers key not in the dict", toString()));
             }
         } else {
-            throw new DataFormatException(String.format("%s the response from the tracker must be a dictionary.", this.toString()));
+            throw new DataFormatException(String.format("%s the response from the tracker must be a dictionary.", toString()));
         }
     }
 
@@ -190,7 +187,7 @@ public class Tracker extends Thread {
      */
     private void updatePeers(byte[] peerBytes) throws DataFormatException {
         if (peerBytes.length % 6 != 0) {
-            throw new DataFormatException(String.format("%s invalid length of peer byte array", this.toString()));
+            throw new DataFormatException(String.format("%s invalid length of peer byte array", toString()));
         }
         peers = new ArrayList<>();
         int i = 0;
@@ -199,7 +196,7 @@ public class Tracker extends Thread {
             try {
                 ip = InetAddress.getByAddress(Arrays.copyOfRange(peerBytes, i, i + 4));
             } catch (UnknownHostException e) {
-                log.fine(String.format("%s unknown host", this.toString()));
+                log.error(e.getMessage(), e);
                 continue;
             }
             int port = (peerBytes[i + 4] & 0xFF)*256 + (peerBytes[i + 4 +1] & 0xFF);
@@ -221,34 +218,34 @@ public class Tracker extends Thread {
                 InetAddress ip;
                 int port;
                 if (!dict.containsKey("peer id")) {
-                    throw new DataFormatException(String.format("%s the dict in the peer list has to contain the key peer id", this.toString()));
+                    throw new DataFormatException(String.format("%s the dict in the peer list has to contain the key peer id", toString()));
                 }
                 if (dict.containsKey("ip")) {
                     if (dict.get("ip") instanceof byte[]) {
                         try {
                             ip = InetAddress.getByName(new String((byte[]) dict.get("ip")));
                         } catch (UnknownHostException e) {
-                            log.fine(String.format("%s unknown host", this.toString()));
+                            log.error(e.getMessage(), e);
                             continue;
                         }
                     } else {
-                        throw new DataFormatException(String.format("%s the provided ip address in peer list is not of type byte string", this.toString()));
+                        throw new DataFormatException(String.format("%s the provided ip address in peer list is not of type byte string", toString()));
                     }
                 } else {
-                    throw new DataFormatException(String.format("%s the dict in the peer list has to contain the key ip", this.toString()));
+                    throw new DataFormatException(String.format("%s the dict in the peer list has to contain the key ip", toString()));
                 }
                 if (dict.containsKey("port")) {
                     if (dict.get("port") instanceof Long) {
                         port = (int) dict.get("port");
                     } else {
-                        throw new DataFormatException(String.format("%s the provided port in peer list is not of type int", this.toString()));
+                        throw new DataFormatException(String.format("%s the provided port in peer list is not of type int", toString()));
                     }
                 } else {
-                    throw new DataFormatException(String.format("%s the dict in the peer list has to contain the key port", this.toString()));
+                    throw new DataFormatException(String.format("%s the dict in the peer list has to contain the key port", toString()));
                 }
                 peers.add(new Pair<InetAddress, Integer>(ip, port));
             } else {
-                throw new DataFormatException(String.format("%s an element of the peer list is not of type dict", this.toString()));
+                throw new DataFormatException(String.format("%s an element of the peer list is not of type dict", toString()));
             }
         }
     }
@@ -389,6 +386,7 @@ public class Tracker extends Thread {
     public void shutdown() {
         keepRunning = false;
         this.interrupt();
+        log.trace("Shut down %s", toString());
     }
     
     /** 

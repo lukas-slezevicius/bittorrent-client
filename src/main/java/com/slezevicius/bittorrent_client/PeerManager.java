@@ -6,11 +6,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * A class for managing the peers of a particular torrent. It deals
@@ -19,6 +21,8 @@ import java.util.logging.Logger;
  */
 public class PeerManager extends Thread {
     private final int BLOCKSIZE = 16384; //2^14
+    private final int MAXPEERS = 1;
+    private final int MAXPIECES = 10;
     private Torrent tor;
     private List<Peer> peers;
     private List<Peer> potentialBitfieldPeers;
@@ -32,6 +36,8 @@ public class PeerManager extends Thread {
      * List of pieces that are available for downloading.
      */
     private List<Integer> availablePieceList;
+    private List<Integer> unfinishedRequestedPieceList;
+    private List<Integer> downloadedPieceList;
 
     /**
      * An array list where the ith integer contains the index of the ith rarest (lowest frequency)
@@ -51,15 +57,17 @@ public class PeerManager extends Thread {
     private Logger log;
 
     PeerManager(Torrent tor) {
-        log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        log.setLevel(Level.ALL);
+        log = LogManager.getFormatterLogger(PeerManager.class);
         peers = new ArrayList<>();
         potentialBitfieldPeers = new ArrayList<>();
         //frequencyArray = new byte[tor.getPieces().length];
         availablePieceList = new ArrayList<>();
+        unfinishedRequestedPieceList = new ArrayList<>();
+        downloadedPieceList = new ArrayList<>();
         requestedPieces = new HashMap<>();
         rand = new Random();
         this.tor = tor;
+        log.trace("%s initialized", toString());
     }
 
     PeerManager() {
@@ -73,28 +81,54 @@ public class PeerManager extends Thread {
      */
     @Override
     public void run() {
+        log.trace("%s in the main loop", toString());
         while (true) {
-            synchronized(this) { //Is such a big critical region needed
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                log.error(toString(), e);
+                return;
+            }
+            synchronized(this) {
                 if (!keepRunning) {
                     break;
                 }
-                if (tor.newPeers()) {
-                    updatePeers();
-                    tor.takenNewPeers();
-                }
-                updateRequestTimeouts();
-                int[] haves = tor.getHaves();
-                for (int i = 0; i < haves.length; i++) {
-                    //Fully downloaded pieces
-                    availablePieceList.remove(Integer.valueOf(haves[i]));
+            }
+            if (tor.isComplete()) {
+                log.info("%s downloaded file");
+                //Temporary while not including seeding
+                return;
+            }
+            if (tor.newPeers()) { //OR has no peers (Maybe additional tracker request?)
+                log.debug("%s updating peers", toString());
+                updatePeers();
+                tor.takenNewPeers();
+            }
+            updateRequestTimeouts();
+            int[] haves = tor.getHaves();
+            for (int i = 0; i < haves.length; i++) {
+                log.debug("%s downloaded piece at index %d", toString(), haves[i]);
+                synchronized(this) {
+                    availablePieceList.remove(Integer.valueOf(haves[i])); //Needed because, potentially an unrequested block can pass through a request which has not been fully requested
                     requestedPieces.remove(Integer.valueOf(haves[i]));
+                    downloadedPieceList.add(Integer.valueOf(haves[i]));
                 }
-                for (Peer peer : peers) {
+            }
+            synchronized(this) {
+                Iterator<Peer> it = peers.iterator();
+                while (it.hasNext()) {
+                    Peer peer = it.next();
+                    if (!peer.isAlive()) {
+                        log.debug("%s; Removing %s", toString(), peer.toString());
+                        it.remove();
+                        if (potentialBitfieldPeers.contains(peer)) {
+                            potentialBitfieldPeers.remove(peer);
+                        }
+                    }
                     if (potentialBitfieldPeers.contains(peer)) {
                         if (peer.hasReceivedBitfield()) {
+                            log.debug("%s getting bitfield from %s", toString(), peer.toString());
                             updateBitfield(peer);
-                        }
-                        if (peer.hasReceivedFirstMessage()) {
                             potentialBitfieldPeers.remove(peer);
                         }
                     }
@@ -108,10 +142,12 @@ public class PeerManager extends Thread {
      * Removes a requested piece if a timeout of 1min has passed.
      * If the available piece was removed, it gets added back.
      */
-    private void updateRequestTimeouts() {
-        for (Map.Entry<Integer, Pair<Integer, Instant>> req : requestedPieces.entrySet()) {
+    private synchronized void updateRequestTimeouts() {
+        for (Iterator<Map.Entry<Integer, Pair<Integer, Instant>>> it = requestedPieces.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Integer, Pair<Integer, Instant>> req = it.next();
             if (!Instant.now().isBefore(req.getValue().getRight().plusSeconds(60))) {
-                requestedPieces.remove(req.getKey());
+                log.debug("%s piece timed out at index %d", toString(), req.getKey().intValue());
+                it.remove();
                 if (!availablePieceList.contains(req.getKey())) {
                     availablePieceList.add(req.getKey());
                 }
@@ -128,7 +164,7 @@ public class PeerManager extends Thread {
         byte[] bitfield = peer.getPeerBitfield();
         for (int i = 0; i < bitfield.length; i++) {
             for (int j = 0; j < 8; j++) {
-                if (((bitfield[i] >> j) & 0x01) == 1 && !availablePieceList.contains(Integer.valueOf(i*8 + j))) {
+                if (((bitfield[i] >> j) & 0x01) == 1 && !downloadedPieceList.contains(i*8 + j) && !availablePieceList.contains(i*8 + j)) {
                     availablePieceList.add(i*8 + j);
                 }
             }
@@ -139,31 +175,33 @@ public class PeerManager extends Thread {
      * Updates the peer list with any new peers. Keeps the peer
      * count to 50 as a maximum and does not allow any duplicates.
      */
-    private void updatePeers() {
+    private synchronized void updatePeers() {
         List<Pair<InetAddress, Integer>> newPeers = tor.getNewPeers();
         for (Pair<InetAddress, Integer> pair : newPeers) {
-            if (peers.size() < 50) {
+            if (peers.size() < MAXPEERS) {
                 boolean peerExists = false;
                 for (Peer peer : peers) {
                     if (peer.getNetworkPair().equals(pair)) {
-                        log.finest("Peer already exists");
+                        log.debug("%s; %s is already in the peer list", toString(), peer.toString());
                         peerExists = true;
                         break;
                     }
                 }
                 if (!peerExists) {
                     try {
+                        log.debug("%s connecting to new peer[ip=%s, port=%d]", toString(), pair.getLeft().toString(), pair.getRight().intValue());
                         Peer newPeer = new Peer(pair, this);
                         newPeer.start();
                         peers.add(newPeer);
                         potentialBitfieldPeers.add(newPeer);
                     } catch (IOException e) {
-                        log.warning("Could not connect to peer with ip " + pair.getLeft() + " and port " + pair.getRight());
+                        log.error("%s could not connect to the new peer[ip=%s, port=%d]", toString(), pair.getLeft().toString(), pair.getRight().intValue());
+                        log.error(e.getMessage(), e);
                         continue;
                     }
                 }
             } else {
-                log.fine("Already got 50 peers");
+                log.debug("%s Already got %d peers", toString(), MAXPEERS);
                 break;
             }
         }
@@ -181,7 +219,6 @@ public class PeerManager extends Thread {
         updateReceivedPieces(peer);
         if (tor.isDownloading() && !peer.getAmInterested()) {
             updateInterest(peer, true);
-            return;
         } else if (!tor.isDownloading() && peer.getAmInterested()) {
             updateInterest(peer, false);
         }
@@ -193,6 +230,7 @@ public class PeerManager extends Thread {
         if (peer.getPeerInterested() && !peer.getAmChocking()) {
             updatePeerPiece(peer);
         }
+        //If fully downloaded don't update requests
         if (peer.getAmInterested() && !peer.getPeerChocking()) {
             updateRequests(peer);
             // if (availablePieceList.size()/tor.getPieces().length > 0.05) {
@@ -212,24 +250,22 @@ public class PeerManager extends Thread {
         for (int i = 0; i < haves.length; i++) {
             ArrayList<Object> arguments = new ArrayList<>();
             arguments.add(haves[i]);
-            log.finest("Adding have order: " + haves[i]);
+            log.debug("%s adding have order at index %d", toString(), haves[i]);
             peer.addOrder(new Pair<String, ArrayList<Object>>("have", arguments));
+            requestedPieces.remove(Integer.valueOf(haves[i]));
         }
         while (true) {
             Integer idx = peer.getPeerHaves();
             if (idx == null) {
                 break;
-            } else if (idx >= tor.getPieces().length) {
-                log.fine("Received an index from the peer which is too large.");
-                continue;
-            } else if (idx < 0) {
-                log.warning("Received an index below 0 from the peer");
+            } else if (idx >= tor.getPieces().length || idx < 0) {
+                log.debug("%s received an out of bounds index", toString());
                 continue;
             }
-            log.finest("Increading frequencyArray at " + idx + " by 1");
+            log.debug("%s increasing frequencyArray at %d by 1", toString(), idx);
             //frequencyArray[idx] += 1; //Needed only later when decision strategy will be implemented
-            if (!availablePieceList.contains(idx)) {
-                log.finest("Adding " + idx + " to available piece list");
+            if (!downloadedPieceList.contains(idx) && !availablePieceList.contains(idx)) {
+                log.debug("%s adding %d to available piece list", toString(), idx);
                 availablePieceList.add(idx);
             }
         }
@@ -244,12 +280,16 @@ public class PeerManager extends Thread {
         while (true) {
             Request piece = peer.getNewPiece();
             if (piece != null) {
-                tor.receivedPiece(piece);
+                log.debug("%s received piece at index %d, begin %d, length %d", toString(), piece.index, piece.begin, piece.block.length);
                 Pair<Integer, Instant> oldReq = requestedPieces.get(Integer.valueOf(piece.index));
                 if (oldReq == null) {
-                    log.warning("Received a piece which was not requested");
+                    log.warn("%s received a piece %d which was not requested", toString(), piece.index);
+                    continue;
+                } else if (downloadedPieceList.contains(piece.index)) {
+                    log.warn("%s received a piece %d which has already been downloaded", toString(), piece.index);
                     continue;
                 }
+                tor.receivedPiece(piece);
                 Integer begin = oldReq.getLeft();
                 Pair<Integer, Instant> req = new Pair<Integer, Instant>(begin, Instant.now());
                 requestedPieces.put(Integer.valueOf(piece.index), req);
@@ -296,17 +336,17 @@ public class PeerManager extends Thread {
         if (req != null) {
             //Check if I am willing to send a piece currently
             if (req.block.length > 131072 || req.block.length < 8192) {
-                log.warning("Received a request with length " + req.block.length);
+                log.warn("%s received a request with unacceptable length", toString());
                 return;
             }
             tor.fillOutPiece(req);
             if (req.block == null) {
-                log.finest("Did not have the requested block");
+                log.debug("%s did not have the requested block", toString());
                 return;
             }
             ArrayList<Object> arguments = new ArrayList<>();
             arguments.add(req);
-            log.finest("Sending piece with idx " + req.index + " begin " + req.begin);
+            log.debug("%s sending piece with idx %d, begin %d, length %d", toString(), req.index, req.begin, req.block.length);
             peer.addOrder(new Pair<String, ArrayList<Object>>("piece", arguments));
         }
     }
@@ -316,21 +356,27 @@ public class PeerManager extends Thread {
      * @param peer
      */
     private void updateRequests(Peer peer) {
+        //How will you check if that specific peer has the piece?
         int requestCount = peer.getRequestCount();
-        if (requestCount >= 10) {
+        if (requestCount >= MAXPIECES) {
+            log.debug("%s; %s already has requested %d pieces", toString(), peer.toString(), MAXPIECES);
             return;
         }
         int pieceLength = (int) tor.getPieceLength();
         Integer reqIndex = getRandomRequestIndex();
-        Integer begin = requestedPieces.get(reqIndex).getLeft();
-        if (begin == null) {
+        Pair<Integer, Instant> requestedPiece = requestedPieces.get(reqIndex);
+        Integer begin;
+        //Check against peer bitfield here
+        if (requestedPiece != null) {
+            begin = requestedPiece.getLeft();
+        } else {
+            unfinishedRequestedPieceList.add(reqIndex);
             begin = 0;
         }
         int length;
         boolean last = false;
         for (int i = 0; i < 10 - requestCount; i++) {
-            if (begin + BLOCKSIZE >= pieceLength && (reqIndex + 1 == tor.getPieces().length
-                || (requestedPieces.containsKey(reqIndex + 1) && requestedPieces.get(reqIndex + 1).getLeft() == -1))) {
+            if (begin + BLOCKSIZE >= pieceLength && (reqIndex + 1 == tor.getPieces().length || !availablePieceList.contains(reqIndex + 1))) {
                 length = pieceLength - begin;
                 last = true;
             } else {
@@ -340,6 +386,7 @@ public class PeerManager extends Thread {
             arguments.add(reqIndex);
             arguments.add(begin);
             arguments.add(length);
+            log.debug("%s requesting block with index %d, begin %d, length %d", toString(), reqIndex, begin, length);
             peer.addOrder(new Pair<String, ArrayList<Object>>("request", arguments));
             peer.incRequestCount();
             begin += BLOCKSIZE;
@@ -347,10 +394,14 @@ public class PeerManager extends Thread {
                 Pair<Integer, Instant> req = new Pair<Integer, Instant>(-1, Instant.now());
                 requestedPieces.put(reqIndex, req);
                 availablePieceList.remove(reqIndex);
+                unfinishedRequestedPieceList.remove(reqIndex);
                 if (last) {
                     reqIndex = getRandomRequestIndex();
-                    begin = requestedPieces.get(reqIndex).getLeft();
-                    if (begin == null) {
+                    requestedPiece = requestedPieces.get(reqIndex);
+                    if (requestedPiece != null) {
+                        begin = requestedPiece.getLeft();
+                    } else {
+                        unfinishedRequestedPieceList.add(reqIndex);
                         begin = 0;
                     }
                     last = false;
@@ -375,6 +426,10 @@ public class PeerManager extends Thread {
      */
     private Integer getRandomRequestIndex() {
         while (true) {
+            if (unfinishedRequestedPieceList.size() > 0) {
+                int unfinishedPieceIndex = rand.nextInt(unfinishedRequestedPieceList.size());
+                return unfinishedRequestedPieceList.get(unfinishedPieceIndex);
+            }
             int availablePieceIndex = rand.nextInt(availablePieceList.size());
             return availablePieceList.get(availablePieceIndex);
         }
@@ -423,6 +478,7 @@ public class PeerManager extends Thread {
      * @param index
      */
     public void redownloadPiece(Integer index) {
+        log.debug("%s redownloading piece at index %d", toString(), index.intValue());
         availablePieceList.add(index);
         requestedPieces.remove(index);
     }
@@ -445,11 +501,12 @@ public class PeerManager extends Thread {
      * @param peer
      */
     public void addPeer(Peer peer) {
-        synchronized(this) {
+            log.debug("Adding new %s to the peer list", peer.toString());
             peer.introducePeerManager(this);
+            peer.start();
+        synchronized(this) {
             peers.add(peer);
             potentialBitfieldPeers.add(peer);
-            peer.start();
         }
     }
     
@@ -468,22 +525,34 @@ public class PeerManager extends Thread {
         return (int) ((tor.getPieces().length/20)/8 + 1);
     }
 
+    public String getFileName() {
+        return tor.getName();
+    }
+
     /**
      * Graciously shuts down the peer manager by
      * ordering all peers to shutdown and eventually
      * shutting itself down.
      */
     public synchronized void shutdown() {
+        log.trace("shutting down %s", toString());
         keepRunning = false;
         for (Peer peer : peers) {
             peer.close();
         }
         for (Peer peer : peers) {
             try {
-                peer.join(); //Add the time
+                peer.join();
             } catch (InterruptedException e) {
-                log.warning("Interrupted while joining peer.");
+                log.error("%s interrupted while joining peer", toString());
+                log.error(e.getMessage(), e);
             }
         }
+        log.trace("%s successfuly shut down", toString());
+    }
+
+    @Override
+    public String toString() {
+        return String.format("PeerManager[name=%s]", tor.getName());
     }
 }
