@@ -1,6 +1,7 @@
 package com.slezevicius.bittorrent_client;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -39,20 +40,21 @@ public class FileManager {
         this.saveFile = saveFile;
         receivedBlockBytes = new HashMap<>();
         incompletePieces = new HashMap<>();
+        bitfield = new byte[tor.getBitfieldLength()];
+        haves = new Stack<>();
+        downloaded = 0;
+        uploaded = 0;
         if (filePreviouslyDownloaded()) {
             updateBitfield();
+            log.debug("%s read a previously downloaded file with %d correct pieces", toString(), haves.size());
             checkIfComplete();
-            //send a bunch of haves to the peer manager
         }
         try {
             accessFile = new RandomAccessFile(saveFile, "rw");
         } catch (FileNotFoundException e) {
             throw new RuntimeException("Could not find the file for a newly opened file");
         }
-        haves = new Stack<>();
-        downloaded = 0;
         complete = false;
-        bitfield = new byte[tor.getBitfieldLength()];
         log.trace("%s initialized", toString());
     }
 
@@ -63,7 +65,7 @@ public class FileManager {
      * @return boolean
      */
     private boolean filePreviouslyDownloaded() {
-        return false;
+        return saveFile.exists();
     }
 
     /**
@@ -71,6 +73,23 @@ public class FileManager {
      * the bitfield to the previous state.
      */
     private void updateBitfield() {
+        try {
+            FileInputStream inFile = new FileInputStream(saveFile);
+            for (int i = 0; i < tor.getPieces().length/20; i++) {
+                byte[] piece = new byte[(int) tor.getPieceLength()];
+                inFile.read(piece);
+                if (pieceIsCorrect(piece, i)) {
+                    int bitfieldIndex = i/8;
+                    int bitIndex = i%8;
+                    bitfield[bitfieldIndex] |= 128 >> bitIndex;
+                    downloaded += tor.getPieceLength();
+                    haves.push(i);
+                }
+            }
+            inFile.close();
+        } catch (IOException e) {
+            log.error(e.getMessage(), e);
+        }
 
     }
 
@@ -203,6 +222,18 @@ public class FileManager {
     private boolean pieceIsCorrect(Integer index) {
         try {
             byte[] piece = incompletePieces.get(index);
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            byte[] pieceHash = md.digest(piece);
+            byte[] infoHash = Arrays.copyOfRange(tor.getPieces(), index*20, (index+1)*20);
+            return Arrays.equals(pieceHash, infoHash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-1 algorithm was not found");
+        }
+            
+    }
+
+    private boolean pieceIsCorrect(byte[] piece, int index) {
+        try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
             byte[] pieceHash = md.digest(piece);
             byte[] infoHash = Arrays.copyOfRange(tor.getPieces(), index*20, (index+1)*20);

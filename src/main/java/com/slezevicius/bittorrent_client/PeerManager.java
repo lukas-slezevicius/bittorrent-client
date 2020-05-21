@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class PeerManager extends Thread {
     private final int BLOCKSIZE = 16384; //2^14
-    private final int MAXPEERS = 1;
+    private final int MAXPEERS = 15;
     private final int MAXPIECES = 10;
     private Torrent tor;
     private List<Peer> peers;
@@ -82,6 +82,7 @@ public class PeerManager extends Thread {
     @Override
     public void run() {
         log.trace("%s in the main loop", toString());
+        Instant timeSinceNoPeers = Instant.now();
         while (true) {
             try {
                 Thread.sleep(50);
@@ -99,11 +100,19 @@ public class PeerManager extends Thread {
                 //Temporary while not including seeding
                 return;
             }
-            if (tor.newPeers()) { //OR has no peers (Maybe additional tracker request?)
+            if (tor.newPeers()) {
                 log.debug("%s updating peers", toString());
                 updatePeers();
                 tor.takenNewPeers();
             }
+            if (peers.size() == 0 && Instant.now().isAfter(timeSinceNoPeers.plusSeconds(60))) {
+                log.debug("%s requesting a new request to the tracker", toString());
+                tor.updateTracker();
+                timeSinceNoPeers = Instant.now();
+            } else if (peers.size() > 0) {
+                timeSinceNoPeers = Instant.now();
+            }
+
             updateRequestTimeouts();
             int[] haves = tor.getHaves();
             for (int i = 0; i < haves.length; i++) {
@@ -124,6 +133,7 @@ public class PeerManager extends Thread {
                         if (potentialBitfieldPeers.contains(peer)) {
                             potentialBitfieldPeers.remove(peer);
                         }
+                        continue;
                     }
                     if (potentialBitfieldPeers.contains(peer)) {
                         if (peer.hasReceivedBitfield()) {
@@ -280,7 +290,7 @@ public class PeerManager extends Thread {
         while (true) {
             Request piece = peer.getNewPiece();
             if (piece != null) {
-                log.debug("%s received piece at index %d, begin %d, length %d", toString(), piece.index, piece.begin, piece.block.length);
+                log.debug("%s received piece at index %d, begin %d, length %d from %s", toString(), piece.index, piece.begin, piece.block.length, peer.toString());
                 Pair<Integer, Instant> oldReq = requestedPieces.get(Integer.valueOf(piece.index));
                 if (oldReq == null) {
                     log.warn("%s received a piece %d which was not requested", toString(), piece.index);
@@ -363,7 +373,7 @@ public class PeerManager extends Thread {
             return;
         }
         int pieceLength = (int) tor.getPieceLength();
-        Integer reqIndex = getRandomRequestIndex();
+        Integer reqIndex = getRandomRequestIndex(peer);
         Pair<Integer, Instant> requestedPiece = requestedPieces.get(reqIndex);
         Integer begin;
         //Check against peer bitfield here
@@ -371,6 +381,7 @@ public class PeerManager extends Thread {
             begin = requestedPiece.getLeft();
         } else {
             unfinishedRequestedPieceList.add(reqIndex);
+            availablePieceList.remove(reqIndex);
             begin = 0;
         }
         int length;
@@ -396,7 +407,7 @@ public class PeerManager extends Thread {
                 availablePieceList.remove(reqIndex);
                 unfinishedRequestedPieceList.remove(reqIndex);
                 if (last) {
-                    reqIndex = getRandomRequestIndex();
+                    reqIndex = getRandomRequestIndex(peer);
                     requestedPiece = requestedPieces.get(reqIndex);
                     if (requestedPiece != null) {
                         begin = requestedPiece.getLeft();
@@ -424,15 +435,16 @@ public class PeerManager extends Thread {
      * Should not be called during the final download stage.
      * @return int
      */
-    private Integer getRandomRequestIndex() {
-        while (true) {
-            if (unfinishedRequestedPieceList.size() > 0) {
-                int unfinishedPieceIndex = rand.nextInt(unfinishedRequestedPieceList.size());
-                return unfinishedRequestedPieceList.get(unfinishedPieceIndex);
+    private Integer getRandomRequestIndex(Peer peer) {
+        for (Integer unfinishedPieceIndex : unfinishedRequestedPieceList) {
+            int bitfieldIndex = unfinishedPieceIndex/8;
+            int bitIndex = unfinishedPieceIndex%8;
+            if (((peer.getPeerBitfield()[bitfieldIndex] >> bitIndex) & 0x01) == 1) {
+                return unfinishedPieceIndex;
             }
-            int availablePieceIndex = rand.nextInt(availablePieceList.size());
-            return availablePieceList.get(availablePieceIndex);
         }
+        int availablePieceIndex = rand.nextInt(availablePieceList.size());
+        return availablePieceList.get(availablePieceIndex);
     }
     
     /** 

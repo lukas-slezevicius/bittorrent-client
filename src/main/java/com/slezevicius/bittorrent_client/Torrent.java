@@ -198,6 +198,10 @@ public class Torrent {
         peerManager.addPeer(peer);
     }
 
+    public void updateTracker() {
+        tracker.updateTracker();
+    }
+
     public String getName() {
         return metainfo.getName();
     }

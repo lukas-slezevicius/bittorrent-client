@@ -46,6 +46,19 @@ public class Tracker extends Thread {
         log.trace("Initialized %s", toString());
     }
 
+    public void updateTracker() {
+        //It's suspicious that every second send always fails...
+        try {
+            send("");
+            log.debug("%s sent update", toString());
+            synchronized(this) {
+                receivedNewPeers = true;
+            }
+        } catch (IOException | DataFormatException | URISyntaxException e) {
+            log.error(e.getMessage(), e);
+        }
+    }
+
     /**
      * The thread's main loop for the tracker. Keeps sending
      * update tracker messages at a specified interval.
