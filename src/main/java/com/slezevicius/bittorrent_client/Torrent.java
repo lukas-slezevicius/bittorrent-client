@@ -188,6 +188,10 @@ public class Torrent {
     public byte[] getBitfield() {
         return fileManager.getBitfield();
     }
+
+    public long getLength() {
+        return metainfo.getLength();
+    }
     
     /** 
      * Adds a peer to the peer manager that was received from the

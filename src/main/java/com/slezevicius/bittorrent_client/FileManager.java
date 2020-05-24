@@ -27,6 +27,7 @@ public class FileManager {
     private Stack<Integer> haves;
     private Map<Integer, byte[]> incompletePieces;
     private Map<Integer, Integer> receivedBlockBytes;
+    private long lastPieceSize;
     private boolean complete;
     private int downloaded;
     private int uploaded;
@@ -44,6 +45,11 @@ public class FileManager {
         haves = new Stack<>();
         downloaded = 0;
         uploaded = 0;
+        complete = false;
+        lastPieceSize = tor.getLength()%tor.getPieceLength();
+        if (lastPieceSize == 0) {
+            lastPieceSize = tor.getPieceLength();
+        }
         if (filePreviouslyDownloaded()) {
             updateBitfield();
             log.debug("%s read a previously downloaded file with %d correct pieces", toString(), haves.size());
@@ -54,7 +60,6 @@ public class FileManager {
         } catch (FileNotFoundException e) {
             throw new RuntimeException("Could not find the file for a newly opened file");
         }
-        complete = false;
         log.trace("%s initialized", toString());
     }
 
@@ -75,8 +80,14 @@ public class FileManager {
     private void updateBitfield() {
         try {
             FileInputStream inFile = new FileInputStream(saveFile);
-            for (int i = 0; i < tor.getPieces().length/20; i++) {
-                byte[] piece = new byte[(int) tor.getPieceLength()];
+            int pieceCount = tor.getPieces().length/20;
+            for (int i = 0; i < pieceCount; i++) {
+                byte[] piece;
+                if (i + 1 == pieceCount) {
+                    piece = new byte[(int) lastPieceSize];
+                } else {
+                    piece = new byte[(int) tor.getPieceLength()];
+                }
                 inFile.read(piece);
                 if (pieceIsCorrect(piece, i)) {
                     int bitfieldIndex = i/8;
@@ -84,6 +95,8 @@ public class FileManager {
                     bitfield[bitfieldIndex] |= 128 >> bitIndex;
                     downloaded += tor.getPieceLength();
                     haves.push(i);
+                } else {
+                    log.debug("Incorrect piece %d", i);
                 }
             }
             inFile.close();
@@ -143,12 +156,18 @@ public class FileManager {
             int bitIndex = index%8;
             boolean gotPiece = (bitfield[bitfieldIndex] & (128 >> bitIndex)) != 0;
             byte[] piece = null;
-            if (!gotPiece && !incompletePieces.containsKey(index)) { //What's up with the gotPiece logic?
-                incompletePieces.put(index, new byte[(int) tor.getPieceLength()]);
+            boolean lastPiece = index + 1 == tor.getPieces().length/20;
+            if (!gotPiece && !incompletePieces.containsKey(index)) {
+                if (!lastPiece) {
+                    incompletePieces.put(index, new byte[(int) tor.getPieceLength()]);
+                } else {
+                    incompletePieces.put(index, new byte[(int) lastPieceSize]);
+                }
                 receivedBlockBytes.put(index, 0);
             }
+            //This does not make sense if I do have that piece... and why does keep manager keep repeating pieces with multiple peers?
             piece = incompletePieces.get(index);
-            int totalBytesSoFar = receivedBlockBytes.get(index);
+            int totalBytesSoFar = receivedBlockBytes.get(index); //Under some circumstances, this does not exist, yet piece exists
             if (gotPiece || begin + length >= piece.length) {
                 if (!gotPiece) {
                     receivedBlockBytes.put(index, totalBytesSoFar + piece.length - begin);
@@ -169,7 +188,9 @@ public class FileManager {
                             log.error(e.getMessage(), e);
                             //Should I reomove the objects here too?
                         }
+                        
                     } else if (pieceIsFull(index)) {
+                        //Should I remove the pieces here?
                         log.debug("%s piece at index %d is invalid; repeating the piece", toString(), index.intValue());
                         repeatPiece(index);
                     }
@@ -186,13 +207,9 @@ public class FileManager {
                     return;
                 }
             } else {
-                if (!gotPiece) {
-                    receivedBlockBytes.put(index, totalBytesSoFar + length);
-                    for (int i = 0; i < length; i++) {
-                        piece[i + begin] = req.block[i];
-                    }
-                } else {
-                    log.debug("%s received a block for a piece which has already been downloaded.", toString());
+                receivedBlockBytes.put(index, totalBytesSoFar + length);
+                for (int i = 0; i < length; i++) {
+                    piece[i + begin] = req.block[i];
                 }
                 return;
             }
@@ -207,7 +224,7 @@ public class FileManager {
      */
     private boolean pieceIsFull(Integer index) {
         //Assuming that the peer manager makes sure there are no duplicates or overlaps
-        if (receivedBlockBytes.get(index) >= tor.getPieceLength()) {
+        if (receivedBlockBytes.get(index) >= incompletePieces.get(index).length) {
             return true;
         }
         return false;
@@ -270,7 +287,7 @@ public class FileManager {
      */
     private void checkIfComplete() {
         for (int i = 0; i < bitfield.length - 1; i++) {
-            if (bitfield[i] != 255) {
+            if ((bitfield[i] & 0xff) != 255) {
                 return;
             }
         }
@@ -278,7 +295,7 @@ public class FileManager {
         //Since the bitfield is written from the most significant bit (from the left),
         //that means the right n bits are not used. 2^n - 1 is the value of the n bits are set to high.
         //Therefore, if the pieces in the last byte are fully downloaded, then b + 2^n - 1 = 255.
-        int lastPiece = bitfield[bitfield.length - 1] + (1 <<  (8 - tor.getPieces().length)) - 1;
+        int lastPiece = bitfield[bitfield.length - 1] + (1 <<  (8 - (tor.getPieces().length/20)%8)) - 1;
         if (lastPiece == 255) {
             complete = true;
         }

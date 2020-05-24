@@ -865,6 +865,10 @@ public class Peer extends Thread {
         requestCount += 1;
     }
 
+    public synchronized void resetRequestCount() {
+        requestCount = 0;
+    }
+
     /**
      * Graciously shuts down the peer.
      */
