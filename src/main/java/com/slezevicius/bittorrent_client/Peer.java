@@ -1,6 +1,6 @@
 package com.slezevicius.bittorrent_client;
 
-import java.io.DataInputStream;
+import java.io.BufferedInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -28,7 +28,7 @@ public class Peer extends Thread {
     private int port;
     private Socket sock;
     private DataOutputStream out;
-    private DataInputStream in;
+    private BufferedInputStream in;
 
     /**
      * foundByPeerServer is true if it was initialized by the peer server, otherwise false.
@@ -89,7 +89,8 @@ public class Peer extends Thread {
         sock.connect(new InetSocketAddress(ip, port), 1000);
         //sock = new Socket(ip, port);
         out = new DataOutputStream(sock.getOutputStream());
-        in = new DataInputStream(sock.getInputStream());
+        //in = new DataInputStream(sock.getInputStream());
+        in = new BufferedInputStream(sock.getInputStream());
         log.trace("%s initialized", toString());
     }
 
@@ -110,7 +111,8 @@ public class Peer extends Thread {
         port = sock.getPort();
         this.sock = sock;
         out = new DataOutputStream(sock.getOutputStream());
-        in = new DataInputStream(sock.getInputStream());
+        //in = new DataInputStream(sock.getInputStream());
+        in = new BufferedInputStream(sock.getInputStream());
         receiveHandshake();
         log.trace("Peer[ip=%s, port=%d] initialized through a socket", ip.toString(), port);
     }
@@ -161,13 +163,20 @@ public class Peer extends Thread {
                 // }
                 int length = 0;
                 for (int i = 3; i >= 0; i--) {
-                    length += (in.readByte() & 0xFF) * Math.pow(256, i);
+                    int val = in.read();
+                    if (val == -1) {
+                        throw new IOException("EOF was reached");
+                    }
+                    length += val * Math.pow(256, i);
                 }
                 if (length == 0) { //Keep alive
                     continue;
                 }
                 int payloadLength = length - 1;
-                int id = in.readByte() & 0xFF;
+                int id = in.read();
+                if (id == -1) {
+                    throw new IOException("EOF was reached");
+                }
                 log.debug("%s received message with id: %d", toString(), id);
                 if (id != 5) { //Needed in order to check whether a bitfield message is first if it is received.
                     synchronized(this) {
@@ -338,14 +347,20 @@ public class Peer extends Thread {
             }
             Thread.sleep(50);
         }
-        byte pstrlen = in.readByte();
-        if (pstrlen != 19) {
+        int pstrlen = in.read();
+        if (pstrlen == -1) {
+            throw new IOException("EOF was reached");
+        } else if (pstrlen != 19) {
             log.debug("%s received pstrlen is not 19", toString());
             throw new DataFormatException("pstrlen is " + pstrlen);
         }
         StringBuilder pstr = new StringBuilder();
         for (int i = 0; i < pstrlen; i++) {
-            pstr.append((char) in.readByte());
+            int c = in.read();
+            if (c == -1) {
+                throw new IOException("EOF was reached");
+            }
+            pstr.append((char) c);
         }
         if (!pstr.toString().equals("BitTorrent protocol")) {
             log.debug("%s received pst is not as expected", this);
@@ -353,12 +368,20 @@ public class Peer extends Thread {
         }
         byte[] reserved = new byte[8];
         for (int i = 0; i < reserved.length; i++) {
-            reserved[i] = in.readByte();
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            reserved[i] = (byte) val;
         }
         parseReserved(reserved);
         byte[] infoHash = new byte[20];
         for (int i = 0; i < infoHash.length; i++) {
-            infoHash[i] = in.readByte();
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            infoHash[i] = (byte) val;
         }
         if (foundByPeerServer) {
             this.infoHash = infoHash;
@@ -367,9 +390,10 @@ public class Peer extends Thread {
                 throw new SecurityException("InfoHash not matching");
             }
         }
-        byte[] peerId = new byte[20];
-        for (int i = 0; i < peerId.length; i++) {
-            peerId[i] = in.readByte();
+        for (int i = 0; i < 20; i++) {
+            if (in.read() == -1) {
+                throw new IOException("EOF was reached");
+            }
         }
         log.debug("%s received handshake", toString());
     }
@@ -599,7 +623,11 @@ public class Peer extends Thread {
     private void receiveHave() throws IOException {
         int idx = 0;
         for (int i = 3; i >= 0; i--) {
-            idx += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            idx += val * Math.pow(256, i);
         }
         int bitfieldIndex = (int) (idx/8);
         int bitIndex = idx % 8;
@@ -628,7 +656,11 @@ public class Peer extends Thread {
                 throw new SecurityException("Peer bitfield does not match the expected size");
             }
             for (int i = 0; i < length; i++) {
-                peerBitfield[i] = in.readByte();
+                int val = in.read();
+                if (val == -1) {
+                    throw new IOException("EOF was reached");
+                }
+                peerBitfield[i] = (byte) val;
             }
         }
     }
@@ -641,15 +673,27 @@ public class Peer extends Thread {
     private void receiveRequest() throws IOException {
         int idx = 0;
         for (int i = 3; i >= 0; i--) {
-            idx += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            idx += val * Math.pow(256, i);
         }
         int begin = 0;
         for (int i = 3; i >= 0; i--) {
-            begin += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            begin += val * Math.pow(256, i);
         }
         int length = 0;
         for (int i = 3; i >= 0; i--) {
-            length += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            length += val * Math.pow(256, i);
         }
         if (length > Math.pow(2, 15)) {
             log.debug("%s the requested piece size was too big; request dropped", toString());
@@ -668,15 +712,27 @@ public class Peer extends Thread {
     private void receivePiece(int length) throws IOException {
         int idx = 0;
         for (int i = 3; i >= 0; i--) {
-            idx += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            idx += val * Math.pow(256, i);
         }
         int begin = 0;
         for (int i = 3; i >= 0; i--) {
-            begin += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            begin += val * Math.pow(256, i);
         }
         byte[] block = new byte[length - 8];
         for (int i = 0; i < length - 8; i++) {
-            block[i] = in.readByte();
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            block[i] = (byte) val;
         }
         Request piece = new Request(idx, begin, block);
         pieceQueue.add(piece);
@@ -697,15 +753,27 @@ public class Peer extends Thread {
     private void receiveCancel() throws IOException {
         int idx = 0;
         for (int i = 3; i >= 0; i--) {
-            idx += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            idx += val * Math.pow(256, i);
         }
         int begin = 0;
         for (int i = 3; i >= 0; i--) {
-            begin += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            begin += val * Math.pow(256, i);
         }
         int length = 0;
         for (int i = 3; i >= 0; i--) {
-            length += (in.readByte() & 0xFF) * Math.pow(256, i);
+            int val = in.read();
+            if (val == -1) {
+                throw new IOException("EOF was reached");
+            }
+            length += val * Math.pow(256, i);
         }
         int[] arr = {idx, begin, length};
         cancelList.add(arr);
@@ -718,9 +786,11 @@ public class Peer extends Thread {
      * @throws IOException
      */
     private void receivePort() throws IOException {
-        byte b1 = in.readByte();
-        byte b2 = in.readByte();
-        int port = (b1 & 0xFF)*265 + (b2 & 0xFF);
+        for (int i = 0; i < 2; i++) {
+            if (in.read() == -1) {
+                throw new IOException("EOF was reached");
+            }
+        }
     }
     
     /** 
@@ -731,9 +801,11 @@ public class Peer extends Thread {
      */
     private void receiveExtension(int length) throws IOException {
         for (int i = 0; i < length; i++) {
-            in.readByte(); //Temporary ignore
+            if (in.read() == -1) {
+                throw new IOException("EOF was reached");
+            }
         }
-        //byte extendedId = in.readByte();
+        //byte extendedId = in.read();
         byte extendedId = 0;
         if (extendedId == 0) {
             //Implement the extension hanshake
