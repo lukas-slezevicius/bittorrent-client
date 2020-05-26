@@ -131,7 +131,7 @@ public class PeerTestIntegration extends PeerTest {
     void testSendChokeOrder() {
         try {
             assertTrue(peer.getAmChocking());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("choke", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("choke", null));
             Thread.sleep(100);
             assertTrue(peer.getAmChocking());
             peer.close();
@@ -150,7 +150,7 @@ public class PeerTestIntegration extends PeerTest {
     void testSendUnchokeOrder() {
         try {
             assertTrue(peer.getAmChocking());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("unchoke", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("unchoke", null));
             Thread.sleep(100);
             assertFalse(peer.getAmChocking());
             peer.close();
@@ -169,10 +169,10 @@ public class PeerTestIntegration extends PeerTest {
     void testSendUnchokeChokeOrder() {
         try {
             assertTrue(peer.getAmChocking());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("unchoke", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("unchoke", null));
             Thread.sleep(100);
             assertFalse(peer.getAmChocking());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("choke", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("choke", null));
             Thread.sleep(100);
             assertTrue(peer.getAmChocking());
             peer.close();
@@ -191,7 +191,7 @@ public class PeerTestIntegration extends PeerTest {
     void testSendInterested() {
         try {
             assertFalse(peer.getAmInterested());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("interested", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("interested", null));
             Thread.sleep(100);
             assertTrue(peer.getAmInterested());
             peer.close();
@@ -210,7 +210,7 @@ public class PeerTestIntegration extends PeerTest {
     void testSendUninterested() {
         try {
             assertFalse(peer.getAmInterested());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("not interested", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("not interested", null));
             Thread.sleep(100);
             assertFalse(peer.getAmInterested());
             peer.close();
@@ -229,10 +229,10 @@ public class PeerTestIntegration extends PeerTest {
     void testSendInterestedUninterested() {
         try {
             assertFalse(peer.getAmInterested());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("interested", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("interested", null));
             Thread.sleep(100);
             assertTrue(peer.getAmInterested());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("not interested", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("not interested", null));
             Thread.sleep(100);
             assertFalse(peer.getAmInterested());
             peer.close();
@@ -253,7 +253,7 @@ public class PeerTestIntegration extends PeerTest {
             int idx = 123112;
             ArrayList<Object> arguments = new ArrayList<>();
             arguments.add(idx);
-            peer.addOrder(new Pair<String, ArrayList<Object>>("have", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("have", arguments));
             Thread.sleep(100);
             byte[] byteIndex = new byte[4];
             byteIndex[0] = (byte) (idx >> 24);
@@ -286,7 +286,7 @@ public class PeerTestIntegration extends PeerTest {
             byte[] messageInfo = {0, 0, 0, (byte) (1 + bitfield.length), 5};
             byte[] bitfieldMessage = ArrayUtils.addAll(messageInfo, bitfield);
             ArrayList<Object> arguments = null;
-            peer.addOrder(new Pair<String, ArrayList<Object>>("bitfield", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("bitfield", arguments));
             Thread.sleep(100);
             byte[] resp = new byte[bitfieldMessage.length];
             assertTimeout(Duration.ofMillis(200), () -> {
@@ -331,7 +331,7 @@ public class PeerTestIntegration extends PeerTest {
             arguments.add(idx);
             arguments.add(begin);
             arguments.add(length);
-            peer.addOrder(new Pair<String, ArrayList<Object>>("request", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("request", arguments));
             Thread.sleep(100);
             byte[] resp = new byte[requestMessage.length];
             assertTimeout(Duration.ofMillis(200), () -> {
@@ -372,7 +372,7 @@ public class PeerTestIntegration extends PeerTest {
             ArrayList<Object> arguments = new ArrayList<>();
             Request piece = new Request(idx, begin, block);
             arguments.add(piece);
-            peer.addOrder(new Pair<String, ArrayList<Object>>("piece", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("piece", arguments));
             Thread.sleep(100);
             byte[] resp = new byte[pieceMessage.length];
             assertTimeout(Duration.ofMillis(200), () -> {
@@ -417,7 +417,7 @@ public class PeerTestIntegration extends PeerTest {
             arguments.add(idx);
             arguments.add(begin);
             arguments.add(length);
-            peer.addOrder(new Pair<String, ArrayList<Object>>("cancel", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("cancel", arguments));
             Thread.sleep(100);
             byte[] resp = new byte[cancelMessage.length];
             assertTimeout(Duration.ofMillis(200), () -> {

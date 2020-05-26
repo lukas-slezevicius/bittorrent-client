@@ -195,7 +195,11 @@ public class PeerManager extends Thread {
                         if (oldVal > 0) {
                             rarenessList.get(oldVal-1).remove(i*8 + j);
                         }
-                        rarenessList.get(oldVal).add(i*8 + j);
+                        if (oldVal < rarenessList.size()) {
+                            rarenessList.get(oldVal).add(i*8 + j);
+                        } else {
+                            log.warn("the frequency array value is higher than the number of peers");
+                        }
                     }
                     frequencyArray[i*8 + j] += 1;
                 }
@@ -286,7 +290,7 @@ public class PeerManager extends Thread {
             ArrayList<Object> arguments = new ArrayList<>();
             arguments.add(haves[i]);
             log.debug("%s adding have order at index %d", toString(), haves[i]);
-            peer.addOrder(new Pair<String, ArrayList<Object>>("have", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("have", arguments));
         }
         boolean newPieceToDownload = false;
         while (true) {
@@ -297,7 +301,7 @@ public class PeerManager extends Thread {
                 log.debug("%s received an out of bounds index", toString());
                 continue;
             }
-            log.debug("%s increasing frequencyArray at %d by 1", toString(), idx);
+            log.debug("%s increasing frequencyArray at %d by 1 to %d", toString(), idx, frequencyArray[idx] + 1);
             int oldVal = frequencyArray[idx];
             if (!downloadedPieceSet.contains(idx) && !requestedPieces.containsKey(idx)) {
                 if (oldVal > 0 && rarenessList.get(oldVal-1).contains(idx)) {
@@ -358,9 +362,9 @@ public class PeerManager extends Thread {
      */
     private void updateInterest(Peer peer, boolean interested) {
         if (interested) {
-            peer.addOrder(new Pair<String, ArrayList<Object>>("interested", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("interested", null));
         } else {
-            peer.addOrder(new Pair<String, ArrayList<Object>>("not interested", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("not interested", null));
         }
     }
 
@@ -371,9 +375,9 @@ public class PeerManager extends Thread {
      */
     private void updateChoke(Peer peer, boolean chocking) {
         if (chocking) {
-            peer.addOrder(new Pair<String, ArrayList<Object>>("choke", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("choke", null));
         } else {
-            peer.addOrder(new Pair<String, ArrayList<Object>>("unchoke", null));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("unchoke", null));
         }
 
     }
@@ -399,7 +403,7 @@ public class PeerManager extends Thread {
             ArrayList<Object> arguments = new ArrayList<>();
             arguments.add(req);
             log.debug("%s sending piece with idx %d, begin %d, length %d", toString(), req.index, req.begin, req.block.length);
-            peer.addOrder(new Pair<String, ArrayList<Object>>("piece", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("piece", arguments));
         }
     }
     
@@ -449,7 +453,7 @@ public class PeerManager extends Thread {
             arguments.add(begin);
             arguments.add(length);
             log.debug("%s requesting block with index %d, begin %d, length %d for %s", toString(), reqIndex, begin, length, peer.toString());
-            peer.addOrder(new Pair<String, ArrayList<Object>>("request", arguments));
+            peer.sendMessage(new Pair<String, ArrayList<Object>>("request", arguments));
             peer.incRequestCount();
             begin += BLOCKSIZE;
             if (begin >= pieceLength || last) {

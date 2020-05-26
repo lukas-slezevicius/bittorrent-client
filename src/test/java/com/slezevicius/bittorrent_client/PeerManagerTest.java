@@ -773,8 +773,7 @@ public class PeerManagerTest {
             requestCount += 1;
         }
 
-        @Override
-        public void addOrder(Pair<String, ArrayList<Object>> order) {
+        public void sendMessage(Pair<String, ArrayList<Object>> order) {
             orderQueue.add(order);
         }
 

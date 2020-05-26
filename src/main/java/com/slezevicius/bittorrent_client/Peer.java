@@ -38,12 +38,6 @@ public class Peer extends Thread {
     private volatile byte[] peerBitfield;
 
     /**
-     * A queue where each order is a pair of a string and an Object arraylist. The string indicates
-     * what order it is and the arraylist object is a versatile method of passing arguments for the messages.
-     */
-    private volatile ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> orderQueue = new ConcurrentLinkedQueue<>();
-
-    /**
      * The pieceQueue holds Request objects for all the received pieces. The peer manager periodically checks
      * the queue and informs the file manager to write the piece that was received.
      */
@@ -163,151 +157,134 @@ public class Peer extends Thread {
                         return;
                     }
                 }
-                //Move the below to a separate function
-                if (in.available() > 0) {
-                    readMessage();
+                // if (in.available() > 0) {
+                // }
+                int length = 0;
+                for (int i = 3; i >= 0; i--) {
+                    length += (in.readByte() & 0xFF) * Math.pow(256, i);
                 }
-                Pair<String, ArrayList<Object>> order = orderQueue.poll();
-                if (order == null) {
+                if (length == 0) { //Keep alive
                     continue;
                 }
-                log.debug("%s Received order: %s", toString(), order.getLeft());
-                switch (order.getLeft()) {
-                    case "keep-alive":
-                        break;
-                    case "choke":
+                int payloadLength = length - 1;
+                int id = in.readByte() & 0xFF;
+                log.debug("%s received message with id: %d", toString(), id);
+                if (id != 5) { //Needed in order to check whether a bitfield message is first if it is received.
+                    synchronized(this) {
+                        receivedFirstMessage = true;
+                    }
+                }
+                switch (id) {
+                    case 0:
                         synchronized(this) {
-                            amChoking = true;
+                            peerChocking = true;
                         }
-                        choke();
                         break;
-                    case "unchoke":
+                    case 1:
                         synchronized(this) {
-                            amChoking = false;
+                            peerChocking = false;
                         }
-                        unchoke();
                         break;
-                    case "interested":
+                    case 2:
                         synchronized(this) {
-                            amInterested = true;
+                            peerInterested = true;
                         }
-                        interested();
                         break;
-                    case "not interested":
+                    case 3:
                         synchronized(this) {
-                            amInterested = false;
+                            peerInterested = false;
                         }
-                        uninterested();
                         break;
-                    case "have":
-                        have(order.getRight());
+                    case 4:
+                        receiveHave();
                         break;
-                    case "bitfield":
-                        bitfield();
+                    case 5:
+                        receiveBitfield(payloadLength);
                         break;
-                    case "request":
-                        request(order.getRight());
+                    case 6:
+                        receiveRequest();
                         break;
-                    case "piece":
-                        piece(order.getRight());
+                    case 7:
+                        receivePiece(payloadLength);
                         break;
-                    case "cancel":
-                        cancel(order.getRight());
+                    case 8:
+                        receiveCancel();
                         break;
-                    case "port":
-                        port();
+                    case 9:
+                        receivePort();
+                        break;
+                    case 20:
+                        receiveExtension(payloadLength);
                         break;
                     default:
-                        log.fatal("%s unexpected order: %s", toString(), order.getLeft());
+                        log.fatal("%s unknown message id %d", toString(), id);
                         shutdownSockets();
                         return;
                 }
             }
         } catch (IOException | InterruptedException | DataFormatException e) {
-            shutdownSockets();
             log.error("%s received an error", toString());
             log.error(e.getMessage(), e);
         }
     }
-    
-    /** 
-     * @param order
-     */
-    public void addOrder(Pair<String, ArrayList<Object>> order) {
-        orderQueue.add(order);
-    }
-    
-    /** 
-     * Determines the message length and id and calls a
-     * method to deal with the message based on the id received.
-     * @throws IOException
-     */
-    private void readMessage() throws IOException {
-        int length = 0;
-        for (int i = 3; i >= 0; i--) {
-            length += (in.readByte() & 0xFF) * Math.pow(256, i);
-        }
-        if (length == 0) { //Keep alive
-            return;
-        }
-        int payloadLength = length - 1;
-        int id = in.readByte() & 0xFF;
-        log.debug("%s received message with id: %d", toString(), id);
-        if (id != 5) { //Needed in order to check whether a bitfield message is first if it is received.
-            synchronized(this) {
-                receivedFirstMessage = true;
+
+    public void sendMessage(Pair<String, ArrayList<Object>> order) {
+        try {
+            log.debug("%s Received order: %s", toString(), order.getLeft());
+            switch (order.getLeft()) {
+                case "keep-alive":
+                    break;
+                case "choke":
+                    synchronized(this) {
+                        amChoking = true;
+                    }
+                    choke();
+                    break;
+                case "unchoke":
+                    synchronized(this) {
+                        amChoking = false;
+                    }
+                    unchoke();
+                    break;
+                case "interested":
+                    synchronized(this) {
+                        amInterested = true;
+                    }
+                    interested();
+                    break;
+                case "not interested":
+                    synchronized(this) {
+                        amInterested = false;
+                    }
+                    uninterested();
+                    break;
+                case "have":
+                    have(order.getRight());
+                    break;
+                case "bitfield":
+                    bitfield();
+                    break;
+                case "request":
+                    request(order.getRight());
+                    break;
+                case "piece":
+                    piece(order.getRight());
+                    break;
+                case "cancel":
+                    cancel(order.getRight());
+                    break;
+                case "port":
+                    port();
+                    break;
+                default:
+                    log.fatal("%s unexpected order: %s", toString(), order.getLeft());
+                    shutdownSockets();
+                    return;
             }
+        } catch (IOException e) {
+            log.fatal(e.getMessage(), e);
         }
-        switch (id) {
-            case 0:
-                synchronized(this) {
-                    peerChocking = true;
-                }
-                break;
-            case 1:
-                synchronized(this) {
-                    peerChocking = false;
-                }
-                break;
-            case 2:
-                synchronized(this) {
-                    peerInterested = true;
-                }
-                break;
-            case 3:
-                synchronized(this) {
-                    peerInterested = false;
-                }
-                break;
-            case 4:
-                receiveHave();
-                break;
-            case 5:
-                receiveBitfield(payloadLength);
-                break;
-            case 6:
-                receiveRequest();
-                break;
-            case 7:
-                receivePiece(payloadLength);
-                break;
-            case 8:
-                receiveCancel();
-                break;
-            case 9:
-                receivePort();
-                break;
-            case 20:
-                receiveExtension(payloadLength);
-                break;
-            default:
-                log.fatal("%s unknown message id %d", toString(), id);
-                shutdownSockets();
-                keepRunning = false;
-                orderQueue.clear();
-                return;
-                
-        }
+
     }
     
     /** 
@@ -877,6 +854,7 @@ public class Peer extends Thread {
      */
     public synchronized void close() {
         keepRunning = false;
+        shutdownSockets();
     }
 
     /**
