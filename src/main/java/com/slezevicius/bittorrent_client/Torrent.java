@@ -77,6 +77,10 @@ public class Torrent {
         return fileManager.isComplete();
     }
 
+    public void timedOutPiece(Integer index) {
+        fileManager.timedOutPiece(index);
+    }
+
     /**
      * @return boolean indicating whether the user wants this torrent to be uploading.
      */

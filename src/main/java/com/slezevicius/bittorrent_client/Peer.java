@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.security.InvalidParameterException;
 import java.time.Instant;
@@ -90,7 +91,9 @@ public class Peer extends Thread {
         peerBitfield = new byte[peerManager.getBitfieldLength()];
         ip = pair.getLeft();
         port = pair.getRight();
-        sock = new Socket(ip, port);
+        sock = new Socket();
+        sock.connect(new InetSocketAddress(ip, port), 1000);
+        //sock = new Socket(ip, port);
         out = new DataOutputStream(sock.getOutputStream());
         in = new DataInputStream(sock.getInputStream());
         log.trace("%s initialized", toString());

@@ -156,18 +156,22 @@ public class FileManager {
             int bitIndex = index%8;
             boolean gotPiece = (bitfield[bitfieldIndex] & (128 >> bitIndex)) != 0;
             byte[] piece = null;
+            int totalBytesSoFar = 0;
             boolean lastPiece = index + 1 == tor.getPieces().length/20;
-            if (!gotPiece && !incompletePieces.containsKey(index)) {
-                if (!lastPiece) {
-                    incompletePieces.put(index, new byte[(int) tor.getPieceLength()]);
-                } else {
-                    incompletePieces.put(index, new byte[(int) lastPieceSize]);
+            if (!gotPiece) {
+                if (!incompletePieces.containsKey(index)) {
+                    if (!lastPiece) {
+                        incompletePieces.put(index, new byte[(int) tor.getPieceLength()]);
+                    } else {
+                        incompletePieces.put(index, new byte[(int) lastPieceSize]);
+                    }
+                    receivedBlockBytes.put(index, 0);
                 }
-                receivedBlockBytes.put(index, 0);
+                piece = incompletePieces.get(index);
+                totalBytesSoFar = receivedBlockBytes.get(index);
+            } else {
+                log.warn("%s got a piece at index %d that has already been written", toString(), index);
             }
-            //This does not make sense if I do have that piece... and why does keep manager keep repeating pieces with multiple peers?
-            piece = incompletePieces.get(index);
-            int totalBytesSoFar = receivedBlockBytes.get(index); //Under some circumstances, this does not exist, yet piece exists
             if (gotPiece || begin + length >= piece.length) {
                 if (!gotPiece) {
                     receivedBlockBytes.put(index, totalBytesSoFar + piece.length - begin);
@@ -308,6 +312,12 @@ public class FileManager {
             checkIfComplete();
             return complete;
         }
+    }
+
+    public void timedOutPiece(Integer index) {
+        log.debug("%s got a timed out piece at index %d", toString(), index);
+        incompletePieces.remove(index);
+        receivedBlockBytes.remove(index);
     }
 
     public synchronized int getDownloaded() {

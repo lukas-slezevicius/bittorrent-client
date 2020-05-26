@@ -31,7 +31,8 @@ public class PeerManager extends Thread {
     private byte[] frequencyArray;
     private List<Set<Integer>> rarenessList;
     private long lastPieceSize;
-    private Map<Integer, Pair<Integer, Instant>> requestedPieces;
+    //private Map<Integer, Pair<Integer, Instant>> requestedPieces;
+    private Map<Integer, Triplet<Integer, Peer, Instant>> requestedPieces;
     private Set<Integer> downloadedPieceSet;
     private boolean keepRunning = true;
     private Logger log;
@@ -135,7 +136,7 @@ public class PeerManager extends Thread {
                     if (((bitfield[i] >> (7-j)) & 0x01) == 1) {
                         int oldVal = frequencyArray[i*8 + j];
                         if (oldVal > 0) {
-                            if (!downloadedPieceSet.contains(i*8 + j)) {
+                            if (!downloadedPieceSet.contains(i*8 + j) && !requestedPieces.containsKey(i*8 + j)) {
                                 rarenessList.get(oldVal-1).remove(i*8 + j);
                                 if (oldVal > 1) {
                                     rarenessList.get(oldVal - 2).add(i*8 + j);
@@ -158,14 +159,17 @@ public class PeerManager extends Thread {
      * If the available piece was removed, it gets added back.
      */
     private synchronized void updateRequestTimeouts() {
-        for (Iterator<Map.Entry<Integer, Pair<Integer, Instant>>> it = requestedPieces.entrySet().iterator(); it.hasNext();) {
-            Map.Entry<Integer, Pair<Integer, Instant>> req = it.next();
+        for (Iterator<Map.Entry<Integer, Triplet<Integer, Peer, Instant>>> it = requestedPieces.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Integer, Triplet<Integer, Peer, Instant>> req = it.next();
             if (!Instant.now().isBefore(req.getValue().getRight().plusSeconds(60))) {
                 log.debug("%s piece timed out at index %d", toString(), req.getKey().intValue());
                 it.remove();
-                rarenessList.get(frequencyArray[req.getKey() - 1]).add(req.getKey());
-                for (Peer peer : peers) {
-                    peer.resetRequestCount(); //Needed because we do not know which peer requested which pieces.
+                if (!downloadedPieceSet.contains(req.getKey())) {
+                    rarenessList.get(frequencyArray[req.getKey()]-1).add(req.getKey());
+                    tor.timedOutPiece(req.getKey());
+                    for (Peer peer : peers) {
+                        peer.resetRequestCount(); //Needed because we do not know which peer requested which pieces.
+                    }
                 }
             }
         }
@@ -177,7 +181,6 @@ public class PeerManager extends Thread {
      * @param peer
      */
     private void updateBitfield(Peer peer) {
-        rarenessList.add(new HashSet<Integer>());
         byte[] bitfield = peer.getPeerBitfield();
         log.debug("%s bitfield size is %d", toString(), bitfield.length);
         for (int i = 0; i < bitfield.length; i++) {
@@ -188,7 +191,7 @@ public class PeerManager extends Thread {
                 }
                 if (((bitfield[i] >> (7-j)) & 0x01) == 1) {
                     int oldVal = frequencyArray[i*8 + j];
-                    if (!downloadedPieceSet.contains(i*8 + j)) {
+                    if (!downloadedPieceSet.contains(i*8 + j) && !requestedPieces.containsKey(i*8 + j)) {
                         if (oldVal > 0) {
                             rarenessList.get(oldVal-1).remove(i*8 + j);
                         }
@@ -222,6 +225,7 @@ public class PeerManager extends Thread {
                         log.debug("%s connecting to new peer[ip=%s, port=%d]", toString(), pair.getLeft().toString(), pair.getRight().intValue());
                         Peer newPeer = new Peer(pair, this);
                         newPeer.start();
+                        rarenessList.add(new HashSet<Integer>());
                         peers.add(newPeer);
                         potentialBitfieldPeers.add(newPeer);
                         peersWithoutDownloads.add(newPeer);
@@ -236,6 +240,7 @@ public class PeerManager extends Thread {
                 break;
             }
         }
+        log.debug("%s finished adding peers", toString());
     }
     
     /** 
@@ -294,12 +299,16 @@ public class PeerManager extends Thread {
             }
             log.debug("%s increasing frequencyArray at %d by 1", toString(), idx);
             int oldVal = frequencyArray[idx];
-            if (!downloadedPieceSet.contains(idx)) {
-                if (oldVal > 0 && rarenessList.get(oldVal).contains(idx)) {
+            if (!downloadedPieceSet.contains(idx) && !requestedPieces.containsKey(idx)) {
+                if (oldVal > 0 && rarenessList.get(oldVal-1).contains(idx)) {
                     newPieceToDownload = true;
                     rarenessList.get(oldVal - 1).remove(idx);
                 }
-                rarenessList.get(oldVal).add(idx);
+                if (oldVal < rarenessList.size()) {
+                    rarenessList.get(oldVal).add(idx);
+                } else {
+                    log.warn("the frequency array value is higher than the number of peers");
+                }
             }
             frequencyArray[idx] += 1;
         }
@@ -318,17 +327,23 @@ public class PeerManager extends Thread {
             Request piece = peer.getNewPiece();
             if (piece != null) {
                 log.debug("%s received piece at index %d, begin %d, length %d from %s", toString(), piece.index, piece.begin, piece.block.length, peer.toString());
-                Pair<Integer, Instant> oldReq = requestedPieces.get(Integer.valueOf(piece.index));
+                Triplet<Integer, Peer, Instant> oldReq = requestedPieces.get(Integer.valueOf(piece.index));
                 if (oldReq == null) {
                     log.warn("%s received a piece %d which was not requested", toString(), piece.index);
                     continue;
                 } else if (downloadedPieceSet.contains(piece.index)) {
-                    log.warn("%s received a piece %d which has already been downloaded", toString(), piece.index);
+                    log.warn("%s received a piece %d which has already been written", toString(), piece.index);
+                    continue;
+                } else if (piece.block == null) {
+                    log.warn("%s received a piece %d with null block", toString(), piece.index);
+                    continue;
+                } else if (oldReq.getMiddle() != peer) {
+                    log.warn("%s received a piece %d from a wrong peer", toString(), piece.index);
                     continue;
                 }
                 tor.receivedPiece(piece);
                 Integer begin = oldReq.getLeft();
-                Pair<Integer, Instant> req = new Pair<Integer, Instant>(begin, Instant.now());
+                Triplet<Integer, Peer, Instant> req = new Triplet<>(begin, peer, Instant.now());
                 requestedPieces.put(Integer.valueOf(piece.index), req);
             } else {
                 break;
@@ -403,21 +418,27 @@ public class PeerManager extends Thread {
         if (reqIndex == null) {
             return;
         }
-        Pair<Integer, Instant> requestedPiece = requestedPieces.get(reqIndex);
+        Triplet<Integer, Peer, Instant> requestedPiece = requestedPieces.get(reqIndex);
         Integer begin;
         if (requestedPiece != null) {
             begin = requestedPiece.getLeft();
         } else {
+            log.debug("%s removing %d from rarenessList", toString(), reqIndex);
             rarenessList.get(frequencyArray[reqIndex] - 1).remove(reqIndex);
             begin = 0;
         }
         int length;
         boolean last = false;
         for (int i = 0; i < 10 - requestCount; i++) {
-            if (begin + BLOCKSIZE >= pieceLength && (reqIndex + 1 == tor.getPieces().length/20 || frequencyArray[reqIndex + 1] == 0)) {
+            if (begin + BLOCKSIZE >= pieceLength
+                && (reqIndex + 1 == tor.getPieces().length/20
+                || frequencyArray[reqIndex + 1] == 0 
+                || downloadedPieceSet.contains(reqIndex + 1)
+                || requestedPieces.get(reqIndex + 1) != null))
+            {
                 length = pieceLength - begin;
                 last = true;
-            } else if (reqIndex + 1 == tor.getPieces().length/20 && begin + BLOCKSIZE >= lastPieceSize) {
+            } else if ((reqIndex + 1 == tor.getPieces().length/20) && begin + BLOCKSIZE >= lastPieceSize) {
                 length = (int) (lastPieceSize - begin);
                 last = true;
             } else {
@@ -427,12 +448,13 @@ public class PeerManager extends Thread {
             arguments.add(reqIndex);
             arguments.add(begin);
             arguments.add(length);
-            log.debug("%s requesting block with index %d, begin %d, length %d", toString(), reqIndex, begin, length);
+            log.debug("%s requesting block with index %d, begin %d, length %d for %s", toString(), reqIndex, begin, length, peer.toString());
             peer.addOrder(new Pair<String, ArrayList<Object>>("request", arguments));
             peer.incRequestCount();
             begin += BLOCKSIZE;
             if (begin >= pieceLength || last) {
-                Pair<Integer, Instant> req = new Pair<Integer, Instant>(-1, Instant.now());
+                log.debug("%s finalizing request of piece at %d", toString(), reqIndex);
+                Triplet<Integer, Peer, Instant> req = new Triplet<>(-1, peer, Instant.now());
                 requestedPieces.put(reqIndex, req);
                 if (i == 10 - requestCount - 1) {
                     return;
@@ -446,6 +468,7 @@ public class PeerManager extends Thread {
                     if (requestedPiece != null) {
                         begin = requestedPiece.getLeft();
                     } else {
+                        log.debug("%s removing %d from rarenessList", toString(), reqIndex);
                         rarenessList.get(frequencyArray[reqIndex] - 1).remove(reqIndex);
                         begin = 0;
                     }
@@ -454,10 +477,11 @@ public class PeerManager extends Thread {
                 }
                 begin -= pieceLength;
                 reqIndex += 1;
+                log.debug("%s removing %d from rarenessList", toString(), reqIndex);
                 rarenessList.get(frequencyArray[reqIndex] - 1).remove(reqIndex);
             }
         }
-        Pair<Integer, Instant> req = new Pair<Integer, Instant>(begin, Instant.now());
+        Triplet<Integer, Peer, Instant> req = new Triplet<>(begin, peer, Instant.now());
         requestedPieces.put(reqIndex, req); //Allows to start from the same point the next time
     }
 
@@ -471,19 +495,14 @@ public class PeerManager extends Thread {
      * @return int
      */
     private Integer getRandomRequestIndex(Peer peer) {
-        byte[] peerBitfield = peer.getPeerBitfield();
-        for (Map.Entry<Integer, Pair<Integer, Instant>> entry : requestedPieces.entrySet()) {
-            if (entry.getValue().getLeft() != -1) {
-                int bitfieldIndex = entry.getKey()/8;
-                int bitIndex = entry.getKey()%8;
-                if (((peerBitfield[bitfieldIndex] >>> (7-bitIndex)) & 0x01) == 1) {
-                    return entry.getKey();
-                }
+        for (Map.Entry<Integer, Triplet<Integer, Peer, Instant>> entry : requestedPieces.entrySet()) {
+            if (entry.getValue().getLeft() != -1 && entry.getValue().getMiddle() == peer) {
+                return entry.getKey();
             }
         }
+        byte[] peerBitfield = peer.getPeerBitfield();
         for (Set<Integer> rarenessLevel : rarenessList) {
-            List<Integer> indexList = new ArrayList<Integer>(rarenessLevel);
-            //This is really not needed
+            List<Integer> indexList = new ArrayList<Integer>(rarenessLevel); //This is really inefficient
             Collections.shuffle(indexList);
             for (Integer index : indexList) {
                 int bitfieldIndex = index/8;
