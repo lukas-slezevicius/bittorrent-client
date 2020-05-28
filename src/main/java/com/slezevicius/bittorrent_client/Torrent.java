@@ -22,7 +22,9 @@ public class Torrent {
     private Tracker tracker;
     private FileManager fileManager;
     private PeerManager peerManager;
+    private File saveFile;
     private Logger log;
+
 
     /**
      * Initializes all the controlled classes.
@@ -33,21 +35,29 @@ public class Torrent {
      * @throws URISyntaxException
      * @throws IOException
      */
-    Torrent(TorrentManager torrentManager, File torrentFile, File saveFile)
-            throws DataFormatException, URISyntaxException , IOException {
+    Torrent(TorrentManager torrentManager, File torrentFile, File saveFile) throws DataFormatException, URISyntaxException, IOException {
         log = LogManager.getFormatterLogger(Torrent.class);
         this.torrentManager = torrentManager;
+        this.saveFile = saveFile;
         metainfo = new Metainfo(torrentFile);
-        fileManager = new FileManager(this, Paths.get(saveFile.toString(), metainfo.getName()).toFile());
-        tracker = new Tracker(metainfo, this);
-        tracker.start();
-        peerManager = new PeerManager(this);
-        peerManager.start();
         log.trace("%s initialized", toString());
     }
 
     Torrent() {
         //Empty constructor for testing
+    }
+
+    void startRunning() throws DataFormatException, URISyntaxException , IOException {
+        log.info("Starting to run %s", toString());
+        fileManager = new FileManager(this, Paths.get(saveFile.toString(), metainfo.getName()).toFile());
+        tracker = new Tracker(metainfo, this);
+        tracker.start();
+        peerManager = new PeerManager(this);
+        peerManager.start();
+    }
+
+    void changeDownloadPath(File downloadPath) {
+
     }
     
     /** 
@@ -212,6 +222,10 @@ public class Torrent {
 
     public String getName() {
         return metainfo.getName();
+    }
+
+    public File getSaveFile() {
+        return saveFile;
     }
     
     /** 
