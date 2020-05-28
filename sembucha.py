@@ -15,10 +15,10 @@ def run_client():
 
 def status():
     with open(sembucha_dir/"torrents.properties", "r") as f:
-        data = f.read().split("\n")
-        if data[-1] == "":
-            data = data[:-1]
+        data = f.read().strip().split("\n")
     for prop in data:
+        if prop == "":
+            continue
         name, _ = prop.split("=")
         grep = subprocess.Popen(["grep", f"{name} writing", "logs/app.log"], stdout=subprocess.PIPE,
                 cwd=sembucha_dir)
@@ -29,6 +29,8 @@ def list_torrents():
     with open(sembucha_dir/"torrents.properties", "r") as f:
         data = f.read().strip().split("\n")
     for prop in data:
+        if prop == "":
+            continue
         name, info = prop.split("=")
         status, download_path = info.strip().split(",")
         print(f"{name} status={status} download={download_path}")
@@ -53,6 +55,8 @@ def remove_torrents(tors):
         data = f.read().strip().split("\n")
     with open(sembucha_dir/"torrents.properties", "w") as f:
         for row in data:
+            if row == "":
+                continue
             name, _ = row.split("=")
             if name not in tors:
                 f.write(f"{row}\n")
@@ -65,6 +69,8 @@ def start_torrents(tors):
         data = f.read().strip().split("\n")
     with open(sembucha_dir/"torrents.properties", "w") as f:
         for row in data:
+            if row == "":
+                continue
             name, info = row.split("=")
             if name in tors:
                 new_info = f"run,{info.split(',')[1]}"
@@ -77,6 +83,8 @@ def stop_torrents(tors):
         data = f.read().strip().split("\n")
     with open(sembucha_dir/"torrents.properties", "w") as f:
         for row in data:
+            if row == "":
+                continue
             name, info = row.split("=")
             if name in tors:
                 new_info = f"stop,{info.split(',')[1]}"
