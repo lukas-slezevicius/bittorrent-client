@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -160,7 +160,7 @@ public class Tracker extends Thread {
                     throw new DataFormatException(String.format("%s complete value is not of type int", toString()));
                 }
             } else {
-                throw new DataFormatException(String.format("%s complete key not in the dict", toString()));
+                log.warn("%s complete key not in the dict", toString());
             }
             if (responseDict.containsKey("incomplete")) {
                 if (responseDict.get("incomplete") instanceof Long) {
@@ -169,7 +169,7 @@ public class Tracker extends Thread {
                     throw new DataFormatException(String.format("%s incomplete value is not of type int", toString()));
                 }
             } else {
-                throw new DataFormatException(String.format("%s incomplete key not in the dict", toString()));
+                log.warn("%s incomplete key not in the dict");
             }
             if (responseDict.containsKey("peers")) {
                 if (responseDict.get("peers") instanceof ArrayList) {

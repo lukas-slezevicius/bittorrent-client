@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 public class Pair<L, R> {
     private final L left;

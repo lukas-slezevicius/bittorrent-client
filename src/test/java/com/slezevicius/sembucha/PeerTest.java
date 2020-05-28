@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 public class PeerTest {
     public class TestingPeerManager extends PeerManager {

@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
@@ -116,7 +116,7 @@ public class PeerTestSocket extends PeerTest {
             peer = new Peer(sock);
             peer.introducePeerManager(peerManager);
             assertTrue(Arrays.equals(peer.getInfoHash(), infoHash));
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field foundByPeerServerField = cls.getDeclaredField("foundByPeerServer");
             foundByPeerServerField.setAccessible(true);
             boolean foundByPeerServer = (boolean) foundByPeerServerField.get(peer);
@@ -141,7 +141,7 @@ public class PeerTestSocket extends PeerTest {
         //Tests sending handshake straight after the socket constructor
         try {
             Socket sock = new Socket(ip, peerPort);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field socketField = cls.getDeclaredField("out");
             socketField.setAccessible(true);
             socketField.set(peer, new DataOutputStream( sock.getOutputStream()));

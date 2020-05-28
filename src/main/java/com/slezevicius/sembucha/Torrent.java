@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,6 +23,7 @@ public class Torrent {
     private FileManager fileManager;
     private PeerManager peerManager;
     private File saveFile;
+    private File torrentFile;
     private Logger log;
 
 
@@ -39,6 +40,7 @@ public class Torrent {
         log = LogManager.getFormatterLogger(Torrent.class);
         this.torrentManager = torrentManager;
         this.saveFile = saveFile;
+        this.torrentFile = torrentFile;
         metainfo = new Metainfo(torrentFile);
         log.trace("%s initialized", toString());
     }
@@ -222,6 +224,10 @@ public class Torrent {
 
     public String getName() {
         return metainfo.getName();
+    }
+
+    public String getTorrentFileName() {
+        return torrentFile.getName();
     }
 
     public File getSaveFile() {

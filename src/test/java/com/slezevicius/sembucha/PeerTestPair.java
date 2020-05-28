@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -130,7 +130,7 @@ public class PeerTestPair extends PeerTest {
                 reserved, ArrayUtils.addAll(
                     infoHash, peerId))));
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("sendHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -163,7 +163,7 @@ public class PeerTestPair extends PeerTest {
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
             debuggerOut.write(handshakeMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -190,7 +190,7 @@ public class PeerTestPair extends PeerTest {
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
             debuggerOut.write(handshakeMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -214,7 +214,7 @@ public class PeerTestPair extends PeerTest {
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
             debuggerOut.write(handshakeMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -235,7 +235,7 @@ public class PeerTestPair extends PeerTest {
             byte[] pstr = {66, 105, 116, 84, 111, 114, 114, 101, 110, 116, 32, 112, 114, 111, 116};
             byte[] handshakeMessage = ArrayUtils.addAll(pstrlen, pstr);
             debuggerOut.write(handshakeMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -259,7 +259,7 @@ public class PeerTestPair extends PeerTest {
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
             debuggerOut.write(handshakeMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -286,7 +286,7 @@ public class PeerTestPair extends PeerTest {
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
             debuggerOut.write(handshakeMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -313,7 +313,7 @@ public class PeerTestPair extends PeerTest {
                     reserved, ArrayUtils.addAll(
                         infoHash, peerId))));
             debuggerOut.write(handshakeMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -331,7 +331,7 @@ public class PeerTestPair extends PeerTest {
     @Test
     void testReceiveHandshakeTimeout() {
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("receiveHandshake");
             method.setAccessible(true);
             method.invoke(peer);
@@ -347,7 +347,7 @@ public class PeerTestPair extends PeerTest {
     void testSendChoke() {
         byte[] chokeMessage = {0, 0, 0, 1, 0};
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("choke");
             method.setAccessible(true);
             method.invoke(peer);
@@ -376,7 +376,7 @@ public class PeerTestPair extends PeerTest {
     void testSendUnchoke() {
         byte[] unchokeMessage = {0, 0, 0, 1, 1};
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("unchoke");
             method.setAccessible(true);
             method.invoke(peer);
@@ -405,7 +405,7 @@ public class PeerTestPair extends PeerTest {
     void testSendInterested() {
         byte[] interestedMessage = {0, 0, 0, 1, 2};
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("interested");
             method.setAccessible(true);
             method.invoke(peer);
@@ -434,7 +434,7 @@ public class PeerTestPair extends PeerTest {
     void testSendUninterested() {
         byte[] uninterestedMessage = {0, 0, 0, 1, 3};
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("uninterested");
             method.setAccessible(true);
             method.invoke(peer);
@@ -470,7 +470,7 @@ public class PeerTestPair extends PeerTest {
         byte[] messageInfo = {0, 0, 0, 5, 4};
         byte[] haveMessage = ArrayUtils.addAll(messageInfo, byteIndex);
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("have", ArrayList.class);
             method.setAccessible(true);
             ArrayList<Object> arguments = new ArrayList<>();
@@ -502,7 +502,7 @@ public class PeerTestPair extends PeerTest {
         byte[] messageInfo = {0, 0, 0, (byte) (1 + bitfield.length), 5};
         byte[] bitfieldMessage = ArrayUtils.addAll(messageInfo, bitfield);
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("bitfield");
             method.setAccessible(true);
             method.invoke(peer);
@@ -548,7 +548,7 @@ public class PeerTestPair extends PeerTest {
         byte[] messageInfo = {0, 0, 0, 13, 6};
         byte[] requestMessage = ArrayUtils.addAll(messageInfo, payload);
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("request", ArrayList.class);
             method.setAccessible(true);
             ArrayList<Object> arguments = new ArrayList<>();
@@ -595,7 +595,7 @@ public class PeerTestPair extends PeerTest {
         byte[] messageInfo = {0, 0, 0, (byte) (9 + block.length), 7};
         byte[] pieceMessage = ArrayUtils.addAll(messageInfo, payload);
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("piece", ArrayList.class);
             method.setAccessible(true);
             ArrayList<Object> arguments = new ArrayList<>();
@@ -644,7 +644,7 @@ public class PeerTestPair extends PeerTest {
         byte[] messageInfo = {0, 0, 0, 13, 8};
         byte[] cancelMessage = ArrayUtils.addAll(messageInfo, payload);
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("cancel", ArrayList.class);
             method.setAccessible(true);
             ArrayList<Object> arguments = new ArrayList<>();
@@ -677,7 +677,7 @@ public class PeerTestPair extends PeerTest {
     @Test
     void testIntToUInt32() {
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("intToUInt32", long.class);
             method.setAccessible(true);
             int n = 0;
@@ -716,7 +716,7 @@ public class PeerTestPair extends PeerTest {
     @Test
     void testIntToUInt32TooLarge() {
         try {
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Method method = cls.getDeclaredMethod("intToUInt32", long.class);
             method.setAccessible(true);
             long n = 4294967296L;
@@ -748,7 +748,7 @@ public class PeerTestPair extends PeerTest {
             haveMessage[2] = (byte) (idx >> 8);
             haveMessage[3] = (byte) idx;
             debuggerOut.write(haveMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field peerBitfieldField = cls.getDeclaredField("peerBitfield");
             peerBitfieldField.setAccessible(true);
             byte[] peerBitfield = (byte[]) peerBitfieldField.get(peer);
@@ -780,7 +780,7 @@ public class PeerTestPair extends PeerTest {
     void testReceiveBitfield() {
         try {
             debuggerOut.write(bitfield);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field peerBitfieldField = cls.getDeclaredField("peerBitfield");
             peerBitfieldField.setAccessible(true);
             byte[] peerBitfield = (byte[]) peerBitfieldField.get(peer);
@@ -806,7 +806,7 @@ public class PeerTestPair extends PeerTest {
         try {
             byte[] bitfield = ArrayUtils.addAll(this.bitfield, new byte[2]);
             debuggerOut.write(bitfield);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field peerBitfieldField = cls.getDeclaredField("peerBitfield");
             peerBitfieldField.setAccessible(true);
             byte[] peerBitfield = (byte[]) peerBitfieldField.get(peer);
@@ -846,7 +846,7 @@ public class PeerTestPair extends PeerTest {
             payload[11] = (byte) length;
             byte[] requestMessage = payload;
             debuggerOut.write(requestMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field requestQueueField = cls.getDeclaredField("requestQueue");
             requestQueueField.setAccessible(true);
             ConcurrentLinkedQueue<Request> requestQueue = (ConcurrentLinkedQueue<Request>) requestQueueField.get(peer);
@@ -893,7 +893,7 @@ public class PeerTestPair extends PeerTest {
             payload[11] = (byte) length;
             byte[] requestMessage = payload;
             debuggerOut.write(requestMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field requestQueueField = cls.getDeclaredField("requestQueue");
             requestQueueField.setAccessible(true);
             ConcurrentLinkedQueue<Request> requestQueue = (ConcurrentLinkedQueue<Request>) requestQueueField.get(peer);
@@ -930,7 +930,7 @@ public class PeerTestPair extends PeerTest {
             payload[7] = (byte) begin;
             byte[] pieceMessage = ArrayUtils.addAll(payload, piece);
             debuggerOut.write(pieceMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field pieceQueueField = cls.getDeclaredField("pieceQueue");
             pieceQueueField.setAccessible(true);
             ConcurrentLinkedQueue<Request> pieceQueue = (ConcurrentLinkedQueue<Request>) pieceQueueField.get(peer);
@@ -978,7 +978,7 @@ public class PeerTestPair extends PeerTest {
             payload[11] = (byte) length;
             byte[] cancelMessage = payload;
             debuggerOut.write(cancelMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field cancelListField = cls.getDeclaredField("cancelList");
             cancelListField.setAccessible(true);
             List<int[]> cancelList = (List<int[]>) cancelListField.get(peer);

@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -445,7 +445,7 @@ public class PeerTestIntegration extends PeerTest {
             debuggerOut.write(chokeMessage);
             Thread.sleep(100);
             assertTrue(peer.getPeerChocking());
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field inField = cls.getDeclaredField("in");
             inField.setAccessible(true);
             DataInputStream in = (DataInputStream) inField.get(peer);
@@ -473,7 +473,7 @@ public class PeerTestIntegration extends PeerTest {
             debuggerOut.write(unchokeMessage);
             Thread.sleep(100);
             assertFalse(peer.getPeerChocking());
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field inField = cls.getDeclaredField("in");
             inField.setAccessible(true);
             DataInputStream in = (DataInputStream) inField.get(peer);
@@ -501,7 +501,7 @@ public class PeerTestIntegration extends PeerTest {
             debuggerOut.write(unchokeMessage);
             Thread.sleep(100);
             assertFalse(peer.getPeerChocking());
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field inField = cls.getDeclaredField("in");
             inField.setAccessible(true);
             DataInputStream in = (DataInputStream) inField.get(peer);
@@ -535,7 +535,7 @@ public class PeerTestIntegration extends PeerTest {
             debuggerOut.write(interestedMessage);
             Thread.sleep(100);
             assertTrue(peer.getPeerInterested());
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field inField = cls.getDeclaredField("in");
             inField.setAccessible(true);
             DataInputStream in = (DataInputStream) inField.get(peer);
@@ -563,7 +563,7 @@ public class PeerTestIntegration extends PeerTest {
             debuggerOut.write(interestedMessage);
             Thread.sleep(100);
             assertFalse(peer.getPeerInterested());
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field inField = cls.getDeclaredField("in");
             inField.setAccessible(true);
             DataInputStream in = (DataInputStream) inField.get(peer);
@@ -591,7 +591,7 @@ public class PeerTestIntegration extends PeerTest {
             debuggerOut.write(interestedMessage);
             Thread.sleep(100);
             assertTrue(peer.getPeerInterested());
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field inField = cls.getDeclaredField("in");
             inField.setAccessible(true);
             DataInputStream in = (DataInputStream) inField.get(peer);
@@ -627,7 +627,7 @@ public class PeerTestIntegration extends PeerTest {
             haveMessage[3] = (byte) idx;
             byte[] infoMessage = {0, 0, 0, 5, 4};
             byte[] message = ArrayUtils.addAll(infoMessage, haveMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field peerBitfieldField = cls.getDeclaredField("peerBitfield");
             peerBitfieldField.setAccessible(true);
             byte[] peerBitfield = (byte[]) peerBitfieldField.get(peer);
@@ -667,7 +667,7 @@ public class PeerTestIntegration extends PeerTest {
             byte[] infoMessage = {0, 0, 0, (byte) (1 + bitfield.length), 5};
             byte[] bitfieldMessage = ArrayUtils.addAll(infoMessage, bitfield);
             debuggerOut.write(bitfieldMessage);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field peerBitfieldField = cls.getDeclaredField("peerBitfield");
             peerBitfieldField.setAccessible(true);
             byte[] peerBitfield = (byte[]) peerBitfieldField.get(peer);
@@ -709,7 +709,7 @@ public class PeerTestIntegration extends PeerTest {
             payload[11] = (byte) length;
             byte[] infoMessage = {0, 0, 0, 13, 6};
             byte[] requestMessage = ArrayUtils.addAll(infoMessage, payload);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field requestQueueField = cls.getDeclaredField("requestQueue");
             requestQueueField.setAccessible(true);
             ConcurrentLinkedQueue<Request> requestQueue = (ConcurrentLinkedQueue<Request>) requestQueueField.get(peer);
@@ -753,7 +753,7 @@ public class PeerTestIntegration extends PeerTest {
             payload[7] = (byte) begin;
             byte[] infoMessage = {0, 0, 0, (byte) (9 + piece.length), 7};
             byte[] pieceMessage = ArrayUtils.addAll(infoMessage, ArrayUtils.addAll(payload, piece));
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field pieceQueueField = cls.getDeclaredField("pieceQueue");
             pieceQueueField.setAccessible(true);
             ConcurrentLinkedQueue<Request> pieceQueue = (ConcurrentLinkedQueue<Request>) pieceQueueField.get(peer);
@@ -802,7 +802,7 @@ public class PeerTestIntegration extends PeerTest {
             payload[11] = (byte) length;
             byte[] infoMessage = {0, 0, 0, 13, 8};
             byte[] cancelMessage = ArrayUtils.addAll(infoMessage, payload);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.Peer");
+            Class cls = Class.forName("com.slezevicius.sembucha.Peer");
             Field cancelListField = cls.getDeclaredField("cancelList");
             cancelListField.setAccessible(true);
             List<int[]> cancelList = (List<int[]>) cancelListField.get(peer);

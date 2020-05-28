@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -97,7 +97,7 @@ public class PeerManagerTest {
             debuggerIn = new DataInputStream(debugger.getInputStream());
             debuggerOut = new DataOutputStream(debugger.getOutputStream());
 
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field peersField = cls.getDeclaredField("peers");
             peersField.setAccessible(true);
             List<Peer> peers = (List<Peer>) peersField.get(peerManager);
@@ -171,7 +171,7 @@ public class PeerManagerTest {
             debuggerIn = new DataInputStream(debugger.getInputStream());
             debuggerOut = new DataOutputStream(debugger.getOutputStream());
 
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field peersField = cls.getDeclaredField("peers");
             peersField.setAccessible(true);
             List<Peer> peers = (List<Peer>) peersField.get(peerManager);
@@ -241,7 +241,7 @@ public class PeerManagerTest {
             debuggerIn = new DataInputStream(debugger.getInputStream());
             debuggerOut = new DataOutputStream(debugger.getOutputStream());
 
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field peersField = cls.getDeclaredField("peers");
             peersField.setAccessible(true);
             List<Peer> peers = (List<Peer>) peersField.get(peerManager);
@@ -303,11 +303,11 @@ public class PeerManagerTest {
                 peer.haveQueue.add(peerHaves[i]);
             }
             int[] haves = {1,19,124,1240,124};
-            Class cls2 = Class.forName("com.slezevicius.bittorrent_client.PeerManagerTest$TestingPeer");
+            Class cls2 = Class.forName("com.slezevicius.sembucha.PeerManagerTest$TestingPeer");
             Field orderQueueField = cls2.getDeclaredField("orderQueue");
             orderQueueField.setAccessible(true);
             ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> orderQueue = (ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>>) orderQueueField.get(peer);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field frequencyArrayField = cls.getDeclaredField("frequencyArray");
             frequencyArrayField.setAccessible(true);
             frequencyArrayField.set(peerManager, frequencyArray);
@@ -361,11 +361,11 @@ public class PeerManagerTest {
             peer.haveQueue.add(10101010); //Too large
             peer.haveQueue.add(-12); //Too small
             int[] haves = new int[0];
-            Class cls2 = Class.forName("com.slezevicius.bittorrent_client.PeerManagerTest$TestingPeer");
+            Class cls2 = Class.forName("com.slezevicius.sembucha.PeerManagerTest$TestingPeer");
             Field orderQueueField = cls2.getDeclaredField("orderQueue");
             orderQueueField.setAccessible(true);
             ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>> orderQueue = (ConcurrentLinkedQueue<Pair<String, ArrayList<Object>>>) orderQueueField.get(peer);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field frequencyArrayField = cls.getDeclaredField("frequencyArray");
             frequencyArrayField.setAccessible(true);
             frequencyArrayField.set(peerManager, frequencyArray);
@@ -427,7 +427,7 @@ public class PeerManagerTest {
             long seed = 10000;
             Random randTest = new Random(seed);
             Random randDebug = new Random(seed);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field randField = cls.getDeclaredField("rand");
             randField.setAccessible(true);
             randField.set(peerManager, randTest);
@@ -478,7 +478,7 @@ public class PeerManagerTest {
             long seed = 10000;
             Random randTest = new Random(seed);
             Random randDebug = new Random(seed);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field randField = cls.getDeclaredField("rand");
             randField.setAccessible(true);
             randField.set(peerManager, randTest);
@@ -543,7 +543,7 @@ public class PeerManagerTest {
             long seed = 9574;
             Random randTest = new Random(seed);
             Random randDebug = new Random(seed);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field frequencyArrayField = cls.getDeclaredField("frequencyArray");
             frequencyArrayField.setAccessible(true);
             frequencyArrayField.set(peerManager, new byte[pieceNumber]);
@@ -614,7 +614,7 @@ public class PeerManagerTest {
             long seed = 10000;
             Random randTest = new Random(seed);
             Random randDebug = new Random(seed);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field randField = cls.getDeclaredField("rand");
             randField.setAccessible(true);
             randField.set(peerManager, randTest);
@@ -679,7 +679,7 @@ public class PeerManagerTest {
             long seed = 9574;
             Random randTest = new Random(seed);
             Random randDebug = new Random(seed);
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.PeerManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.PeerManager");
             Field frequencyArrayField = cls.getDeclaredField("frequencyArray");
             frequencyArrayField.setAccessible(true);
             frequencyArrayField.set(peerManager, new byte[pieceNumber]);

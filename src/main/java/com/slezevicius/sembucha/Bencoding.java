@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -74,7 +74,7 @@ public class FileManagerTest {
     void receivedPieceTest() {
         try {
             long seed = 1231231;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);
@@ -111,7 +111,7 @@ public class FileManagerTest {
     void receivedPieceTwiceTest() {
         try {
             long seed = 123123;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);
@@ -156,7 +156,7 @@ public class FileManagerTest {
     void receivedPieceOverflowBarelyAlignedTest() {
         try {
             long seed = 12312;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);
@@ -197,7 +197,7 @@ public class FileManagerTest {
     void receivedPieceOverflowAlignedTest() {
         try {
             long seed = 11231;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);
@@ -250,7 +250,7 @@ public class FileManagerTest {
     void receivedPieceOverflowMisalignedTest() {
         try {
             long seed = 11231;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);
@@ -310,7 +310,7 @@ public class FileManagerTest {
     void receivedPieceFullTest() {
         try {
             long seed = 1231231;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);
@@ -352,7 +352,7 @@ public class FileManagerTest {
     void receivedPieceFullMisalignedTest() {
         try {
             long seed = 12312371;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);
@@ -396,7 +396,7 @@ public class FileManagerTest {
     void receivedPieceFullIncorrectTest() {
         try {
             long seed = 1231231;
-            Class cls = Class.forName("com.slezevicius.bittorrent_client.FileManager");
+            Class cls = Class.forName("com.slezevicius.sembucha.FileManager");
             Method method = cls.getDeclaredMethod("receivedPiece", Request.class);
             method.setAccessible(true);
             Random rand = new Random(seed);

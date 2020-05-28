@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import java.io.BufferedInputStream;
 import java.io.DataOutputStream;
@@ -653,6 +653,7 @@ public class Peer extends Thread {
             receivedFirstMessage = true;
             receivedBitfield = true;
             if (length != peerBitfield.length) {
+                log.warn("%s received bitfield with size %d; expected %d", toString(), length, peerBitfield.length);
                 throw new SecurityException("Peer bitfield does not match the expected size");
             }
             for (int i = 0; i < length; i++) {

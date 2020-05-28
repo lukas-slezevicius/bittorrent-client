@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -180,7 +180,7 @@ public class FileManager {
                     }
                     if (pieceIsFull(index) && pieceIsCorrect(index)) {
                         try {
-                            log.debug("%s writing piece at index %d", toString(), index.intValue());
+                            log.info("%s writing piece at index %d", tor.getTorrentFileName(), index.intValue());
                             writeToFile(index);
                             bitfield[bitfieldIndex] |= 128 >> bitIndex;
                             incompletePieces.remove(index);

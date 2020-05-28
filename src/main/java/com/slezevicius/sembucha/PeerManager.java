@@ -1,4 +1,4 @@
-package com.slezevicius.bittorrent_client;
+package com.slezevicius.sembucha;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -137,7 +137,13 @@ public class PeerManager extends Thread {
                         int oldVal = frequencyArray[i*8 + j];
                         if (oldVal > 0) {
                             if (!downloadedPieceSet.contains(i*8 + j) && !requestedPieces.containsKey(i*8 + j)) {
-                                rarenessList.get(oldVal-1).remove(i*8 + j);
+                                if (oldVal > rarenessList.size()) {
+                                    log.warn("%s the frequencyArray val is higher than rarenessList size");
+                                    rarenessList.get(rarenessList.size()-1).remove(i*8 + j);
+                                    frequencyArray[i*8 + j] = (byte) peers.size();
+                                } else {
+                                    rarenessList.get(oldVal-1).remove(i*8 + j);
+                                }
                                 if (oldVal > 1) {
                                     rarenessList.get(oldVal - 2).add(i*8 + j);
                                 }
@@ -574,7 +580,7 @@ public class PeerManager extends Thread {
      * @return int
      */
     public int getBitfieldLength() {
-        return (int) ((tor.getPieces().length/20)/8 + 1);
+        return (int) Math.ceil((double) (tor.getPieces().length/20)/8);
     }
 
     public String getFileName() {
