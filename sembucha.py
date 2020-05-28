@@ -9,7 +9,7 @@ sembucha_dir = Path(os.environ["HOME"])/Path(".local/share/Sembucha")
 
 def run_client():
     try:
-        subprocess.run(["java", "-cp", "bittorrent-client-1.0-SNAPSHOT-jar-with-dependencies.jar", "com.slezevicius.bittorrent_client.App"], shell=False, cwd=sembucha_dir)
+        subprocess.run(["java", "-cp", "sembucha-0.1-jar-with-dependencies.jar", "com.slezevicius.sembucha.App"], shell=False, cwd=sembucha_dir)
     except KeyboardInterrupt:
         pass
 
